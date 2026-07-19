@@ -41,6 +41,11 @@ scaffolding. If that file is absent, setup steps live outside the repo.)
   action, no raw upstream errors.
 - Tests run in the real Workers runtime via `@cloudflare/vitest-pool-workers`;
   Withings is mocked with `fetchMock`. The six priority tests in §7 gate Phase 2.
+- Git workflow: **the developer personally handles all git operations** —
+  do not commit, push, branch, or open PRs unless explicitly asked in the
+  moment. Leave changes in the working tree for the developer to review and
+  commit. (Project rule for reference: nothing goes directly to `main`;
+  branch + PR, one per coherent unit of work.)
 - Verify current library APIs / template names against live docs before use;
   fetch Withings' one-file AI context from developer.withings.com rather than
   guessing endpoint details.
