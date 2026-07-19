@@ -1,0 +1,24 @@
+# Secrets & operator-local docs — never committed (see PLAN.md §7)
+.dev.vars
+*.local.md
+.env
+.env.*
+
+# Dependencies
+node_modules/
+
+# Build & tooling output
+dist/
+.wrangler/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
