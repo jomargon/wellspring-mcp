@@ -1,0 +1,3 @@
+WITHINGS_CLIENT_ID=your_withings_dev_client_id
+WITHINGS_CLIENT_SECRET=your_withings_dev_client_secret
+TOKEN_ENCRYPTION_KEY=generate_with_openssl_rand_hex_32
