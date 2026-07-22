@@ -10,10 +10,14 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 1** (scaffold deployed to
-`wellspring-mcp-dev.jomargon.workers.dev`; Phase 1 completes when the developer
-finishes the end-to-end OAuth verification — throwaway GitHub OAuth app +
-GITHUB_* secrets, then MCP Inspector and Claude connect. Then bump to 2.)
+**Current phase: 3** (Tools + server instructions — see PLAN.md §6. Phase 2
+verified end-to-end 2026-07-21: Withings upstream + `UserTokensDO` live on
+the dev worker, full OAuth flow completed via Inspector against the demo
+user, `get_connection_status` connected, `/withings/connect` re-auth works,
+six priority tests green. `allowPlainPKCE: false` set and
+`get_connection_status` already exist (pulled forward). Rung 2 of the
+recovery ladder is mock-tested only — a live `withings_token_recovery` log
+event is expected ~never; investigate if the counter climbs.)
 
 ## Invariants — never violate, even in a "quick fix"
 
@@ -41,7 +45,11 @@ GITHUB_* secrets, then MCP Inspector and Claude connect. Then bump to 2.)
   `withings_unavailable`, `invalid_request` — plain language, one corrective
   action, no raw upstream errors.
 - Tests run in the real Workers runtime via `@cloudflare/vitest-pool-workers`;
-  Withings is mocked with `fetchMock`. The six priority tests in §7 gate Phase 2.
+  Withings is mocked with `vi.spyOn(globalThis, "fetch")` (`fetchMock` no
+  longer exists in current vitest-pool-workers; worker + DOs run in the test
+  isolate so global mocks reach them — production code must call bare
+  `fetch(...)`, never capture it at module scope). The six priority tests in
+  §7 gate Phase 2.
 - Git workflow: **the developer personally handles all git operations** —
   do not commit, push, branch, or open PRs unless explicitly asked in the
   moment. Leave changes in the working tree for the developer to review and
@@ -49,7 +57,11 @@ GITHUB_* secrets, then MCP Inspector and Claude connect. Then bump to 2.)
   branch + PR, one per coherent unit of work.)
 - Verify current library APIs / template names against live docs before use;
   fetch Withings' one-file AI context from developer.withings.com rather than
-  guessing endpoint details.
+  guessing endpoint details (llms.md omits signed/partner endpoints — the full
+  OpenAPI spec is embedded in the api-reference SPA's `main.<hash>.js`).
+- Withings exact-matches the registered redirect URI (host + path — ours is
+  `/withings/callback`, one URL per app registration), so the OAuth hop can
+  only be verified against the deployed dev worker, never `localhost`.
 
 ## Commands
 
