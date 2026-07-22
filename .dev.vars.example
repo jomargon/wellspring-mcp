@@ -1,3 +1,9 @@
 WITHINGS_CLIENT_ID=your_withings_dev_client_id
 WITHINGS_CLIENT_SECRET=your_withings_dev_client_secret
 TOKEN_ENCRYPTION_KEY=generate_with_openssl_rand_hex_32
+
+# Temporary — Phase 1 template testing only; removed in Phase 2 when the
+# Withings upstream replaces the template's GitHub OAuth.
+GITHUB_CLIENT_ID=your_throwaway_github_oauth_app_client_id
+GITHUB_CLIENT_SECRET=your_throwaway_github_oauth_app_client_secret
+COOKIE_ENCRYPTION_KEY=generate_with_openssl_rand_hex_32

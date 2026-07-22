@@ -1,0 +1,70 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "wellspring-mcp-dev",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-10",
+	"compatibility_flags": ["nodejs_compat"],
+	/**
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 *
+	 * Commands to set secrets:
+	 * npx wrangler secret put GITHUB_CLIENT_ID
+	 * npx wrangler secret put GITHUB_CLIENT_SECRET
+	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
+	 */
+	"migrations": [
+		{
+			"new_sqlite_classes": ["MyMCP"],
+			"tag": "v1"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "MyMCP",
+				"name": "MCP_OBJECT"
+			}
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "OAUTH_KV",
+			"id": "54f3aff8638c46dca478d99b57433c9f"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"dev": {
+		"port": 8788
+	},
+	"env": {
+		// Config-only stub until Phase 5 (first production deploy): bindings are not
+		// inherited by named environments, so they're mirrored here. The production
+		// KV namespace doesn't exist yet — create it and replace the placeholder ID
+		// in Phase 5.
+		"production": {
+			"name": "wellspring-mcp",
+			"routes": [{ "pattern": "wellspring.fit", "custom_domain": true }],
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "MyMCP",
+						"name": "MCP_OBJECT"
+					}
+				]
+			},
+			"kv_namespaces": [
+				{
+					"binding": "OAUTH_KV",
+					"id": "<Add-Prod-KV-ID-in-Phase-5>"
+				}
+			]
+		}
+	}
+}
