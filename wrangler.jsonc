@@ -13,14 +13,19 @@
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 *
 	 * Commands to set secrets:
-	 * npx wrangler secret put GITHUB_CLIENT_ID
-	 * npx wrangler secret put GITHUB_CLIENT_SECRET
+	 * npx wrangler secret put WITHINGS_CLIENT_ID
+	 * npx wrangler secret put WITHINGS_CLIENT_SECRET
+	 * npx wrangler secret put TOKEN_ENCRYPTION_KEY
 	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
 	 */
 	"migrations": [
 		{
 			"new_sqlite_classes": ["MyMCP"],
 			"tag": "v1"
+		},
+		{
+			"new_sqlite_classes": ["UserTokensDO"],
+			"tag": "v2"
 		}
 	],
 	"durable_objects": {
@@ -28,6 +33,10 @@
 			{
 				"class_name": "MyMCP",
 				"name": "MCP_OBJECT"
+			},
+			{
+				"class_name": "UserTokensDO",
+				"name": "USER_TOKENS"
 			}
 		]
 	},
@@ -39,6 +48,11 @@
 	],
 	"observability": {
 		"enabled": true
+	},
+	// Non-secret config: public origin used to build re-auth links in tool
+	// errors (the MCP layer has no request URL to derive it from).
+	"vars": {
+		"PUBLIC_ORIGIN": "https://wellspring-mcp-dev.jomargon.workers.dev"
 	},
 	"dev": {
 		"port": 8788
@@ -56,6 +70,10 @@
 					{
 						"class_name": "MyMCP",
 						"name": "MCP_OBJECT"
+					},
+					{
+						"class_name": "UserTokensDO",
+						"name": "USER_TOKENS"
 					}
 				]
 			},
@@ -64,7 +82,10 @@
 					"binding": "OAUTH_KV",
 					"id": "<Add-Prod-KV-ID-in-Phase-5>"
 				}
-			]
+			],
+			"vars": {
+				"PUBLIC_ORIGIN": "https://wellspring.fit"
+			}
 		}
 	}
 }

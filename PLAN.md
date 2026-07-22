@@ -149,7 +149,7 @@ Tool-design practices: ISO `YYYY-MM-DD` date inputs (convert to epoch internally
   4. Withings `status != 0` with HTTP 200 is treated as an error.
   5. Unit normalization (`value × 10^unit`), dual-unit output, and user-timezone date conversion round-trips.
   6. A recovered token chain resumes normal refresh behavior (no lingering `needs_reauth` state).
-  Use `vitest-pool-workers` so DO behavior is tested in the real runtime; mock Withings with `fetchMock`.
+  Use `vitest-pool-workers` so DO behavior is tested in the real runtime; mock Withings with a global fetch spy (`vi.spyOn(globalThis, "fetch")` — `fetchMock` was removed from vitest-pool-workers; the worker and its DOs run in the test isolate, so global mocks reach them).
 - **Dependency hygiene:** pin versions, commit the lockfile, CI installs with `npm ci`. **Dependabot security alerts + security-update PRs: always on** (silent until a real CVE affects a used dependency — the only mechanism that patches a dormant repo, since manual auditing stops happening once the project needs no attention and CI `npm audit` only runs on pushes). Version updates: quarterly manual bump-and-test, or if automated, monthly and grouped into one PR. This is essentially the entire ongoing maintenance workload.
 
 **Security non-negotiables.** These are requirements, not aspirations; each gets verified in the Phase 4 audit and several are informed by auditing the strongest existing implementation:

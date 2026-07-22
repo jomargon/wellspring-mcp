@@ -1,10 +1,7 @@
 // workers-oauth-utils.ts
 // OAuth utility functions with CSRF and state validation security fixes
 
-import type {
-	AuthRequest,
-	ClientInfo,
-} from "@cloudflare/workers-oauth-provider";
+import type { ClientInfo } from "@cloudflare/workers-oauth-provider";
 
 /**
  * OAuth 2.1 compliant error class.
@@ -55,13 +52,13 @@ export interface OAuthStateResult {
 }
 
 /**
- * Result from validateOAuthState containing the original OAuth request info and cookie to clear
+ * Result from validateOAuthState containing the stored flow payload and cookie to clear
  */
-export interface ValidateStateResult {
+export interface ValidateStateResult<T> {
 	/**
-	 * The original OAuth request information that was stored with the state token
+	 * The flow payload that was stored with the state token
 	 */
-	oauthReqInfo: AuthRequest;
+	payload: T;
 
 	/**
 	 * Set-Cookie header value to clear the state cookie
@@ -257,20 +254,21 @@ export function validateCSRFToken(
 
 /**
  * Creates and stores OAuth state information, returning a state token
- * @param oauthReqInfo - OAuth request information to store with the state
+ * @param payload - Flow payload to store with the state (e.g. the original
+ *   OAuth request info, or a re-auth marker)
  * @param kv - Cloudflare KV namespace for storing OAuth state data
  * @param stateTTL - Time-to-live for OAuth state in seconds (defaults to 600)
  * @returns Object containing the state token (KV-only validation, no cookie needed)
  */
-export async function createOAuthState(
-	oauthReqInfo: AuthRequest,
+export async function createOAuthState<T>(
+	payload: T,
 	kv: KVNamespace,
 	stateTTL = 600,
 ): Promise<OAuthStateResult> {
 	const stateToken = crypto.randomUUID();
 
 	// Store state in KV (secure, one-time use, with TTL)
-	await kv.put(`oauth:state:${stateToken}`, JSON.stringify(oauthReqInfo), {
+	await kv.put(`oauth:state:${stateToken}`, JSON.stringify(payload), {
 		expirationTtl: stateTTL,
 	});
 
@@ -324,10 +322,10 @@ export async function bindStateToSession(
  * @returns Object containing the original OAuth request info and cookie to clear
  * @throws {OAuthError} If state is missing, mismatched, or expired
  */
-export async function validateOAuthState(
+export async function validateOAuthState<T>(
 	request: Request,
 	kv: KVNamespace,
-): Promise<ValidateStateResult> {
+): Promise<ValidateStateResult<T>> {
 	const consentedStateCookieName = "__Host-CONSENTED_STATE";
 	const url = new URL(request.url);
 	const stateFromQuery = url.searchParams.get("state");
@@ -378,9 +376,9 @@ export async function validateOAuthState(
 		);
 	}
 
-	let oauthReqInfo: AuthRequest;
+	let payload: T;
 	try {
-		oauthReqInfo = JSON.parse(storedDataJson) as AuthRequest;
+		payload = JSON.parse(storedDataJson) as T;
 	} catch (_e) {
 		throw new OAuthError("server_error", "Invalid state data", 500);
 	}
@@ -391,7 +389,7 @@ export async function validateOAuthState(
 	// Clear the session binding cookie (one-time use per OAuth flow)
 	const clearCookie = `${consentedStateCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`;
 
-	return { oauthReqInfo, clearCookie };
+	return { payload, clearCookie };
 }
 
 /**
