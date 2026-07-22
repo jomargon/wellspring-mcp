@@ -10,9 +10,10 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 0** (pre-development setup — human-only tasks in the untracked
-`SETUP.local.md`; ask the developer to confirm its exit criteria are met before
-scaffolding. If that file is absent, setup steps live outside the repo.)
+**Current phase: 1** (scaffold deployed to
+`wellspring-mcp-dev.jomargon.workers.dev`; Phase 1 completes when the developer
+finishes the end-to-end OAuth verification — throwaway GitHub OAuth app +
+GITHUB_* secrets, then MCP Inspector and Claude connect. Then bump to 2.)
 
 ## Invariants — never violate, even in a "quick fix"
 
@@ -52,8 +53,15 @@ scaffolding. If that file is absent, setup steps live outside the repo.)
 
 ## Commands
 
-(Fill in during Phase 1 once the project is scaffolded: dev server, test,
-typecheck/lint, deploy.)
+- `npm run dev` — local dev server (`wrangler dev`, port 8788)
+- `npm test` — Vitest in the real Workers runtime (`cloudflareTest()` plugin;
+  note `defineWorkersConfig` is removed in current vitest-pool-workers)
+- `npm run type-check` — `tsc --noEmit` (strict + `noUncheckedIndexedAccess`)
+- `npm run lint` / `npm run format` — Biome
+- `npm run cf-typegen` — regenerate `worker-configuration.d.ts` after any
+  `wrangler.jsonc` or `.dev.vars` change (runtime + Env types come from it;
+  `@cloudflare/workers-types` is deliberately not installed)
+- `npm run deploy` — deploy the dev Worker (production deploys are Phase 5)
 
 ## Maintaining this file
 
