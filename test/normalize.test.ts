@@ -3,9 +3,16 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	addDaysYmd,
 	decodeMeasureValue,
+	epochToLocalTime,
 	epochToYmd,
+	formatDuration,
+	toDualDistance,
+	toDualHeight,
+	toDualTemperature,
 	toDualWeight,
+	todayYmd,
 	ymdToEpoch,
 } from "../src/normalize";
 
@@ -26,6 +33,61 @@ describe("toDualWeight", () => {
 	it("returns both unit systems", () => {
 		expect(toDualWeight(82.4)).toEqual({ kg: 82.4, lb: 181.66 });
 		expect(toDualWeight(0)).toEqual({ kg: 0, lb: 0 });
+	});
+});
+
+describe("dual-unit helpers (Phase 3)", () => {
+	it("toDualDistance returns km and mi at 2 decimals", () => {
+		expect(toDualDistance(10000)).toEqual({ km: 10, mi: 6.21 });
+		expect(toDualDistance(0)).toEqual({ km: 0, mi: 0 });
+		expect(toDualDistance(1609.344)).toEqual({ km: 1.61, mi: 1 });
+	});
+
+	it("toDualHeight returns cm and feet-inches", () => {
+		expect(toDualHeight(1.8)).toEqual({ cm: 180, ft_in: `5'11"` });
+		// Rounding up to a full foot must carry (72.008in → 6'0", never 5'12").
+		expect(toDualHeight(1.829)).toEqual({ cm: 182.9, ft_in: `6'0"` });
+	});
+
+	it("toDualTemperature returns celsius and fahrenheit", () => {
+		expect(toDualTemperature(36.6)).toEqual({ c: 36.6, f: 97.9 });
+		expect(toDualTemperature(0)).toEqual({ c: 0, f: 32 });
+	});
+});
+
+describe("formatDuration", () => {
+	it("formats seconds as hours and minutes", () => {
+		expect(formatDuration(27120)).toBe("7h 32m");
+		expect(formatDuration(3600)).toBe("1h 0m");
+	});
+
+	it("omits hours below one hour", () => {
+		expect(formatDuration(300)).toBe("5m");
+		expect(formatDuration(0)).toBe("0m");
+	});
+});
+
+describe("calendar helpers (Phase 3)", () => {
+	it("addDaysYmd does pure calendar math across boundaries", () => {
+		expect(addDaysYmd("2026-07-15", 1)).toBe("2026-07-16");
+		expect(addDaysYmd("2026-03-01", -1)).toBe("2026-02-28");
+		expect(addDaysYmd("2026-12-31", 1)).toBe("2027-01-01");
+		expect(addDaysYmd("2026-07-15", -30)).toBe("2026-06-15");
+	});
+
+	it("todayYmd returns today in the given timezone", () => {
+		const nowSeconds = Math.floor(Date.now() / 1000);
+		for (const timeZone of ["UTC", "Asia/Tokyo", "America/New_York"]) {
+			expect(todayYmd(timeZone)).toBe(epochToYmd(nowSeconds, timeZone));
+		}
+	});
+
+	it("epochToLocalTime formats HH:MM in the given timezone", () => {
+		const midnightTokyo = ymdToEpoch("2026-07-15", "Asia/Tokyo");
+		expect(epochToLocalTime(midnightTokyo, "Asia/Tokyo")).toBe("00:00");
+		expect(
+			epochToLocalTime(midnightTokyo + 23 * 3600 + 41 * 60, "Asia/Tokyo"),
+		).toBe("23:41");
 	});
 });
 

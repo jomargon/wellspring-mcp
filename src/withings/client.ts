@@ -23,13 +23,19 @@ const INVALID_GRANT_STATUSES = new Set([100, 101, 102, 200, 401, 342, 343]);
 export async function postWithings(
 	path: string,
 	params: Record<string, string>,
-	options: { timeoutMs?: number } = {},
+	options: { timeoutMs?: number; accessToken?: string } = {},
 ): Promise<unknown> {
+	const headers: Record<string, string> = {
+		"Content-Type": "application/x-www-form-urlencoded",
+	};
+	if (options.accessToken) {
+		headers.Authorization = `Bearer ${options.accessToken}`;
+	}
 	let response: Response;
 	try {
 		response = await fetch(`${WITHINGS_API_BASE}${path}`, {
 			method: "POST",
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			headers,
 			body: new URLSearchParams(params).toString(),
 			signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
 		});

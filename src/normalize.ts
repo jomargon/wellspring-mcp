@@ -3,6 +3,8 @@
 // Tools never inline unit math — it all lives here. Phase 3 extends this file.
 
 const KG_PER_LB = 0.45359237;
+const METERS_PER_MILE = 1609.344;
+const CM_PER_INCH = 2.54;
 
 /** Decode Withings' `value × 10^unit` fixed-point encoding into a float. */
 export function decodeMeasureValue(value: number, unit: number): number {
@@ -18,6 +20,71 @@ export function toDualWeight(kg: number): { kg: number; lb: number } {
 		kg: Number(kg.toFixed(2)),
 		lb: Number((kg / KG_PER_LB).toFixed(2)),
 	};
+}
+
+/** Dual-unit distance for activity/workout outputs. */
+export function toDualDistance(meters: number): { km: number; mi: number } {
+	return {
+		km: Number((meters / 1000).toFixed(2)),
+		mi: Number((meters / METERS_PER_MILE).toFixed(2)),
+	};
+}
+
+/** Dual-unit height: centimeters plus a feet-inches string like `5'11"`. */
+export function toDualHeight(meters: number): { cm: number; ft_in: string } {
+	const cm = Number((meters * 100).toFixed(1));
+	const totalInches = Math.round((meters * 100) / CM_PER_INCH);
+	const feet = Math.floor(totalInches / 12);
+	const inches = totalInches % 12;
+	return { cm, ft_in: `${feet}'${inches}"` };
+}
+
+/** Dual-unit temperature (body temperature meastype). */
+export function toDualTemperature(celsius: number): { c: number; f: number } {
+	return {
+		c: Number(celsius.toFixed(1)),
+		f: Number(((celsius * 9) / 5 + 32).toFixed(1)),
+	};
+}
+
+/** Compact human duration ("7h 32m", "45m") for sleep/workout summaries. */
+export function formatDuration(seconds: number): string {
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+/** Today's `YYYY-MM-DD` in the user's timezone — for zero-arg date defaults. */
+export function todayYmd(timeZone: string): string {
+	return epochToYmd(Math.floor(Date.now() / 1000), timeZone);
+}
+
+/** Pure calendar arithmetic on `YYYY-MM-DD` — timezone-independent. */
+export function addDaysYmd(ymd: string, days: number): string {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+	if (!match) {
+		throw new Error(`Invalid date: expected YYYY-MM-DD, got "${ymd}"`);
+	}
+	const [, year, month, day] = match;
+	const date = new Date(
+		Date.UTC(Number(year), Number(month) - 1, Number(day) + days),
+	);
+	return date.toISOString().slice(0, 10);
+}
+
+/** Format an epoch (seconds) as `HH:MM` wall-clock time in the timezone. */
+export function epochToLocalTime(
+	epochSeconds: number,
+	timeZone: string,
+): string {
+	const parts = new Intl.DateTimeFormat("en-GB", {
+		timeZone,
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: false,
+	}).format(new Date(epochSeconds * 1000));
+	// en-GB gives "23:41"; midnight can format as "24:00" in some runtimes.
+	return parts.replace(/^24:/, "00:");
 }
 
 /**
