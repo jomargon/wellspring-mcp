@@ -2,6 +2,15 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { UserTokensDO } from "./tokens/do";
+import { register as registerActivity } from "./tools/get-activity";
+import { register as registerBodyMeasurements } from "./tools/get-body-measurements";
+import { register as registerConnectionStatus } from "./tools/get-connection-status";
+import { register as registerDevices } from "./tools/get-devices";
+import { register as registerHeartData } from "./tools/get-heart-data";
+import { register as registerSleepSummary } from "./tools/get-sleep-summary";
+import { register as registerWorkouts } from "./tools/get-workouts";
+import { SERVER_INSTRUCTIONS } from "./tools/instructions";
+import type { ToolContext, TzCache } from "./tools/shared";
 import { WithingsHandler } from "./withings-handler";
 
 // Context from the auth process, encrypted & stored in the client-facing auth
@@ -12,50 +21,38 @@ type Props = {
 };
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
-	server = new McpServer({
-		name: "Wellspring for Withings",
-		version: "0.1.0",
-	});
+	server = new McpServer(
+		{
+			name: "Wellspring for Withings",
+			version: "0.1.0",
+		},
+		{ instructions: SERVER_INSTRUCTIONS },
+	);
 
 	async init() {
-		// PLAN.md §6 tool 7 — reports token/auth state without touching health
-		// data. Pulled into Phase 2 as the end-to-end wiring check; the six
-		// data tools follow in Phase 3.
-		this.server.tool(
-			"get_connection_status",
-			"Check whether this server can currently reach the user's Withings account. Call this first when any Withings data request fails or before troubleshooting.",
-			{},
-			async () => {
-				const withingsUserId = this.props?.withingsUserId;
-				if (!withingsUserId) {
-					return statusText(
-						`No Withings account is linked to this session. Reconnect the Wellspring connector in Claude's settings to start over.`,
-					);
-				}
-				const stub = this.env.USER_TOKENS.get(
-					this.env.USER_TOKENS.idFromName(withingsUserId),
-				);
-				const status = await stub.getStatus();
-				const reconnectUrl = `${this.env.PUBLIC_ORIGIN}/withings/connect`;
-				switch (status) {
-					case "ok":
-						return statusText("Connected to Withings — everything looks good.");
-					case "needs_reauth":
-						return statusText(
-							`The Withings connection has expired and needs a quick one-click reconnect. Ask the user to open ${reconnectUrl} — it takes about 30 seconds.`,
-						);
-					case "not_connected":
-						return statusText(
-							`No Withings account is connected yet. Ask the user to open ${reconnectUrl} to connect one.`,
-						);
-				}
+		// Lazy getters so tools always see the current props/env, matching the
+		// previous behavior of reading this.props inside each handler.
+		const agent = this;
+		const ctx: ToolContext = {
+			get env() {
+				return agent.env;
 			},
-		);
-	}
-}
+			get props() {
+				return agent.props;
+			},
+		};
+		// Per-agent-instance timezone cache: at most one getdevice lookup per
+		// session for the epoch-param endpoints (PLAN.md §6 timezone handling).
+		const cache: TzCache = {};
 
-function statusText(text: string) {
-	return { content: [{ text, type: "text" as const }] };
+		registerConnectionStatus(this.server, ctx);
+		registerDevices(this.server, ctx, cache);
+		registerSleepSummary(this.server, ctx, cache);
+		registerBodyMeasurements(this.server, ctx, cache);
+		registerHeartData(this.server, ctx, cache);
+		registerActivity(this.server, ctx, cache);
+		registerWorkouts(this.server, ctx, cache);
+	}
 }
 
 export { UserTokensDO };

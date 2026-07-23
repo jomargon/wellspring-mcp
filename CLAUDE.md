@@ -10,14 +10,14 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 3** (Tools + server instructions — see PLAN.md §6. Phase 2
-verified end-to-end 2026-07-21: Withings upstream + `UserTokensDO` live on
-the dev worker, full OAuth flow completed via Inspector against the demo
-user, `get_connection_status` connected, `/withings/connect` re-auth works,
-six priority tests green. `allowPlainPKCE: false` set and
-`get_connection_status` already exist (pulled forward). Rung 2 of the
-recovery ladder is mock-tested only — a live `withings_token_recovery` log
-event is expected ~never; investigate if the counter climbs.)
+**Current phase: 4** (UX & hardening — see PLAN.md §11. Phase 3 verified
+2026-07-23: all seven tools + server `instructions` live on the dev worker,
+Inspector-tested against the demo user and a real account; 62 tests green.
+Tools share `src/tools/shared.ts` (`runTool` = token fetch → error mapping →
+allowlist logging); timezone comes from `getdevice`, cached per session.
+Rung 2 of the recovery ladder is mock-tested only — a live
+`withings_token_recovery` log event is expected ~never; investigate if the
+counter climbs.)
 
 ## Invariants — never violate, even in a "quick fix"
 
@@ -39,6 +39,10 @@ event is expected ~never; investigate if the counter climbs.)
   Withings boundary — zod schemas produce the types, both directions.
 - Withings responses: HTTP 200 with `status != 0` in the body is an ERROR.
   Always check the `status` field. Payloads nest under `body`.
+- The Withings API serves only data recorded by Withings devices. Data
+  imported into the Withings app from other sources (e.g. Apple Health) shows
+  in the app but never through the API — an empty result with a healthy
+  connection and no capable device is correct behavior, not a bug.
 - Small modules per PLAN.md §7; one tool per file; shared normalization helpers
   (dual units, user-timezone dates) — never inline unit math in tools.
 - Errors surfaced to users map to exactly one of: `needs_reauth`,
@@ -56,9 +60,9 @@ event is expected ~never; investigate if the counter climbs.)
   commit. (Project rule for reference: nothing goes directly to `main`;
   branch + PR, one per coherent unit of work.)
 - Verify current library APIs / template names against live docs before use;
-  fetch Withings' one-file AI context from developer.withings.com rather than
-  guessing endpoint details (llms.md omits signed/partner endpoints — the full
-  OpenAPI spec is embedded in the api-reference SPA's `main.<hash>.js`).
+  never guess Withings endpoint details — the full OpenAPI spec downloads
+  directly from `https://developer.withings.com/openapi.yaml` (llms.md is the
+  fallback but omits signed/partner endpoints).
 - Withings exact-matches the registered redirect URI (host + path — ours is
   `/withings/callback`, one URL per app registration), so the OAuth hop can
   only be verified against the deployed dev worker, never `localhost`.

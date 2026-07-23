@@ -69,6 +69,27 @@ describe("postWithings envelope handling", () => {
 		expect(url).toBe("https://wbsapi.withings.net/v2/oauth2");
 		expect(init.body).toBe("action=requesttoken&code=x");
 	});
+
+	// Phase 3: data endpoints authenticate with a Bearer access token.
+	it("sends an Authorization Bearer header when accessToken is provided", async () => {
+		const spy = mockWithingsResponse({ status: 0, body: {} });
+		await postWithings(
+			"/measure",
+			{ action: "getmeas" },
+			{ accessToken: "test-access-token" },
+		);
+		const [, init] = spy.mock.calls[0] as [string, RequestInit];
+		expect(new Headers(init.headers).get("authorization")).toBe(
+			"Bearer test-access-token",
+		);
+	});
+
+	it("sends no Authorization header by default", async () => {
+		const spy = mockWithingsResponse({ status: 0, body: {} });
+		await postWithings("/v2/oauth2", { action: "requesttoken" });
+		const [, init] = spy.mock.calls[0] as [string, RequestInit];
+		expect(new Headers(init.headers).get("authorization")).toBeNull();
+	});
 });
 
 describe("signature v2", () => {
