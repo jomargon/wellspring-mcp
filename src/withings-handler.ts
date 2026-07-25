@@ -13,7 +13,21 @@ import type {
 } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
 import { WithingsApiError } from "./errors";
-import { buildAuthorizeUrl, exchangeCode } from "./withings/oauth";
+import {
+	disconnectConfirmPage,
+	disconnectedPage,
+	disconnectPartialPage,
+} from "./pages/disconnect";
+import { landingPage } from "./pages/landing";
+import { htmlResponse, layout, stylesResponse } from "./pages/layout";
+import { privacyPage } from "./pages/privacy";
+import { authRateLimit } from "./rate-limit";
+import { hashUserId } from "./tools/shared";
+import {
+	buildAuthorizeUrl,
+	exchangeCode,
+	revokeAccess,
+} from "./withings/oauth";
 import {
 	addApprovedClient,
 	bindStateToSession,
@@ -28,9 +42,26 @@ import {
 
 type FlowState =
 	| { kind: "mcp-authorize"; oauthReqInfo: AuthRequest; demo?: boolean }
-	| { kind: "reauth"; demo?: boolean };
+	| { kind: "reauth"; demo?: boolean }
+	| { kind: "disconnect"; demo?: boolean };
 
 const app = new Hono<{ Bindings: Env & { OAUTH_PROVIDER: OAuthHelpers } }>();
+
+// Per-IP limits on every route that starts or completes an OAuth flow
+// (PLAN.md §7). Public pages (/, /privacy, /styles.css) stay unlimited.
+app.use("/authorize", authRateLimit);
+app.use("/withings/connect", authRateLimit);
+app.use("/withings/callback", authRateLimit);
+app.use("/disconnect", authRateLimit);
+app.use("/disconnect/*", authRateLimit);
+
+// Single shared stylesheet — keeps every page's CSP at style-src 'self'
+// with no 'unsafe-inline' (PLAN.md §7).
+app.get("/styles.css", () => stylesResponse());
+
+app.get("/", () => htmlResponse(landingPage(env.PUBLIC_ORIGIN), 200));
+
+app.get("/privacy", () => htmlResponse(privacyPage(), 200));
 
 app.get("/authorize", async (c) => {
 	let oauthReqInfo: AuthRequest;
@@ -66,7 +97,7 @@ app.get("/authorize", async (c) => {
 		csrfToken,
 		server: {
 			description:
-				"Unofficial integration for Withings devices. Lets your AI assistant read your Withings sleep, body, activity, and heart data. Read-only — nothing is ever written to your Withings account, and no health data is stored.",
+				"Unofficial integration for Withings devices. Lets your AI assistant read your Withings sleep, body, activity, and heart data. Access is read-only: nothing is ever written to your Withings account, and no health data is stored. After connecting, go back to your AI assistant and try: “How did I sleep last week?”",
 			name: "Wellspring for Withings",
 		},
 		setCookie,
@@ -139,6 +170,21 @@ app.get("/withings/connect", async (c) => {
 });
 
 /**
+ * Self-service disconnect (amended PLAN.md §9.5). workers-oauth-provider
+ * fires no event when a user removes the connector in Claude, so this page
+ * is the real revocation path: the user re-proves account ownership via the
+ * Withings OAuth hop, then the callback revokes everything.
+ */
+app.get("/disconnect", (c) =>
+	htmlResponse(disconnectConfirmPage(c.req.query("demo") === "1"), 200),
+);
+
+app.get("/disconnect/start", async (c) => {
+	const demo = c.req.query("demo") === "1";
+	return startWithingsFlow(c.req.raw, { kind: "disconnect", demo });
+});
+
+/**
  * Withings OAuth callback, shared by both flows.
  *
  * SECURITY: state is validated against both the one-time KV record (proves we
@@ -166,7 +212,7 @@ app.get("/withings/callback", async (c) => {
 	const code = c.req.query("code");
 	if (!code) {
 		return connectionFailedResponse(
-			"Withings did not return an authorization code — the connection was cancelled or timed out.",
+			"Withings did not return an authorization code. The connection was cancelled or timed out.",
 		);
 	}
 
@@ -190,6 +236,13 @@ app.get("/withings/callback", async (c) => {
 		return connectionFailedResponse(
 			"We couldn't finish connecting to Withings. Please try again.",
 		);
+	}
+
+	// Disconnect: the exchange above proved account ownership (the user id
+	// comes from Withings, never from user input). Do NOT store these tokens —
+	// revoke everything instead.
+	if (flow.kind === "disconnect") {
+		return completeDisconnect(c.env, tokens.withingsUserId, clearSessionCookie);
 	}
 
 	// Write-before-grant: tokens are durably stored in the user's DO before
@@ -225,6 +278,66 @@ app.get("/withings/callback", async (c) => {
 
 	return new Response(null, { status: 302, headers });
 });
+
+async function completeDisconnect(
+	bindings: Env & { OAUTH_PROVIDER: OAuthHelpers },
+	withingsUserId: string,
+	clearSessionCookie: string,
+): Promise<Response> {
+	let revokedUpstream = true;
+	try {
+		await revokeAccess(
+			{
+				clientId: env.WITHINGS_CLIENT_ID,
+				clientSecret: env.WITHINGS_CLIENT_SECRET,
+			},
+			withingsUserId,
+		);
+	} catch (_error) {
+		revokedUpstream = false;
+	}
+
+	// Local tokens die regardless — a failed upstream revoke must never leave
+	// a live local token chain behind.
+	const stub = bindings.USER_TOKENS.get(
+		bindings.USER_TOKENS.idFromName(withingsUserId),
+	);
+	await stub.clearTokens();
+
+	// Best-effort: revoke the client-facing grants so Claude's own tokens stop
+	// working too. Once the DO is cleared, a surviving grant only ever yields
+	// needs_reauth — so failures here are not user-visible.
+	try {
+		let cursor: string | undefined;
+		do {
+			const grants = await bindings.OAUTH_PROVIDER.listUserGrants(
+				withingsUserId,
+				cursor ? { cursor } : undefined,
+			);
+			for (const grant of grants.items) {
+				await bindings.OAUTH_PROVIDER.revokeGrant(grant.id, withingsUserId);
+			}
+			cursor = grants.cursor;
+		} while (cursor);
+	} catch (_error) {
+		// Intentionally swallowed — see comment above.
+	}
+
+	// Allowlist-only log (PLAN.md §7): event, outcome, hashed user id.
+	console.log(
+		JSON.stringify({
+			event: "disconnect",
+			outcome: revokedUpstream ? "ok" : "partial",
+			user: await hashUserId(withingsUserId),
+		}),
+	);
+
+	return htmlResponse(
+		revokedUpstream ? disconnectedPage() : disconnectPartialPage(),
+		200,
+		clearSessionCookie ? [clearSessionCookie] : [],
+	);
+}
 
 async function startWithingsFlow(
 	request: Request,
@@ -264,50 +377,19 @@ function connectionFailedResponse(message: string): Response {
 function reconnectedPageHtml(): string {
 	return simplePageHtml(
 		"Reconnected ✓",
-		"Your Withings account is connected again. You can close this tab and go back to Claude — try asking: “How did I sleep last week?”",
+		"Your Withings account is connected again. You can close this tab and go back to your AI assistant. Try asking: “How did I sleep last week?”",
 	);
 }
 
 function simplePageHtml(title: string, message: string, action = ""): string {
-	return `<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>${title} | Wellspring for Withings</title>
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; background: #f9fafb; margin: 0; }
-			.card { max-width: 480px; margin: 4rem auto; background: #fff; border-radius: 8px; box-shadow: 0 8px 36px 8px rgba(0,0,0,0.1); padding: 2rem; text-align: center; }
-			a { color: #0070f3; }
-		</style>
-	</head>
-	<body>
-		<div class="card">
+	return layout(
+		title,
+		`		<div class="card card--message">
 			<h1>${title}</h1>
 			<p>${message}</p>
 			${action ? `<p>${action}</p>` : ""}
-		</div>
-	</body>
-</html>`;
-}
-
-function htmlResponse(
-	html: string,
-	status: number,
-	cookies: string[] = [],
-): Response {
-	const headers = new Headers({
-		"Content-Type": "text/html; charset=utf-8",
-		// Scripts fully blocked; style-src 'unsafe-inline' only carries the
-		// static <style> block. Phase 4 hardening replaces it with a hash.
-		"Content-Security-Policy":
-			"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
-		"X-Frame-Options": "DENY",
-	});
-	for (const cookie of cookies) {
-		headers.append("Set-Cookie", cookie);
-	}
-	return new Response(html, { status, headers });
+		</div>`,
+	);
 }
 
 export { app as WithingsHandler };

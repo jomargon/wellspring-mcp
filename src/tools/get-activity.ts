@@ -95,7 +95,14 @@ export async function handle(
 			}));
 
 		if (days.length === 0) {
-			return { days: [], note: emptyNote("activity data", range) };
+			return {
+				days: [],
+				note: emptyNote(
+					"activity data",
+					range,
+					"a Withings watch or activity tracker",
+				),
+			};
 		}
 		const note = moreNote(body.more);
 		return { days, ...(note && { note }) };

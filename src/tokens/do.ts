@@ -34,6 +34,14 @@ export class UserTokensDO extends DurableObject<Env> {
 		await this.#writeTokens(record);
 	}
 
+	/**
+	 * Erase everything for this user (disconnect flow). After this the DO
+	 * reports not_connected — indistinguishable from a never-connected user.
+	 */
+	async clearTokens(): Promise<void> {
+		await this.ctx.storage.deleteAll();
+	}
+
 	/** Auth state without touching tokens or Withings. */
 	async getStatus(): Promise<ConnectionStatus> {
 		const authState = await this.ctx.storage.get<AuthState>("auth_state");

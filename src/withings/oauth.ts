@@ -93,6 +93,29 @@ export async function recoverAuthorizationCode(
 	return recoverBodySchema.parse(body).user.code;
 }
 
+/**
+ * Revoke every token Withings holds for this user of our app (PLAN.md §9.5:
+ * disconnect genuinely severs access). Signed request, same recipe as
+ * recovery. Withings also auto-unsubscribes any notification subscriptions.
+ */
+export async function revokeAccess(
+	credentials: WithingsCredentials,
+	withingsUserId: string,
+): Promise<void> {
+	const nonce = await getNonce(credentials);
+	const signedParams = {
+		action: "revoke",
+		client_id: credentials.clientId,
+		nonce,
+	};
+	const signature = await signParams(signedParams, credentials.clientSecret);
+	await postWithings("/v2/oauth2", {
+		...signedParams,
+		signature,
+		userid: withingsUserId,
+	});
+}
+
 function toTokenSet(body: unknown): TokenSet {
 	const parsed = tokenBodySchema.parse(body);
 	return {

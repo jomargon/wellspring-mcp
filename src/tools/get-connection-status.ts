@@ -3,6 +3,7 @@
 // tool); behavior unchanged.
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { notLinkedMessage } from "../errors";
 import type { ToolContext, ToolResult } from "./shared";
 
 export const name = "get_connection_status";
@@ -15,9 +16,7 @@ export const inputShape = {};
 export async function handle(ctx: ToolContext): Promise<ToolResult> {
 	const withingsUserId = ctx.props?.withingsUserId;
 	if (!withingsUserId) {
-		return statusText(
-			`No Withings account is linked to this session. Reconnect the Wellspring connector in Claude's settings to start over.`,
-		);
+		return statusText(notLinkedMessage());
 	}
 	const stub = ctx.env.USER_TOKENS.get(
 		ctx.env.USER_TOKENS.idFromName(withingsUserId),
@@ -26,10 +25,10 @@ export async function handle(ctx: ToolContext): Promise<ToolResult> {
 	const reconnectUrl = `${ctx.env.PUBLIC_ORIGIN}/withings/connect`;
 	switch (status) {
 		case "ok":
-			return statusText("Connected to Withings — everything looks good.");
+			return statusText("Connected to Withings. Everything looks good.");
 		case "needs_reauth":
 			return statusText(
-				`The Withings connection has expired and needs a quick one-click reconnect. Ask the user to open ${reconnectUrl} — it takes about 30 seconds.`,
+				`The Withings connection has expired and needs a quick one-click reconnect. Ask the user to open ${reconnectUrl}. It takes about 30 seconds.`,
 			);
 		case "not_connected":
 			return statusText(

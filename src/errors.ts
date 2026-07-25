@@ -22,6 +22,39 @@ export type WithingsFailureKind =
 	| "invalid_grant" // credentials/token rejected — rung 2 (recovery) territory
 	| "transient"; // network/timeout/rate-limit/5xx-ish — retry territory
 
+// User-visible category messages (PLAN.md §6/§7: plain language, one
+// corrective action, no upstream jargon). Centralized here so the wording is
+// reviewed in one place; tool-specific notes stay at their call sites.
+
+/** No withingsUserId in props — the client-facing grant is broken. */
+export function notLinkedMessage(): string {
+	return (
+		"No Withings account is linked to this session. Reconnect the " +
+		"Wellspring connector in your AI assistant's settings to start over."
+	);
+}
+
+/** Recovery ladder exhausted — the one-click re-auth link is the fix. */
+export function reauthMessage(reconnectUrl: string): string {
+	return (
+		"The Withings connection needs a quick one-click reconnect. Ask the " +
+		`user to open ${reconnectUrl}. It takes about 30 seconds.`
+	);
+}
+
+/** Withings rejected mid-call; status may already be self-healing. */
+export function rejectedMessage(): string {
+	return (
+		"Withings rejected this connection. Run get_connection_status to " +
+		"check it. The user may need a quick reconnect."
+	);
+}
+
+/** Transient upstream failure — retry is the only action. */
+export function unavailableMessage(): string {
+	return "Withings didn't respond just now. Please try again in a minute.";
+}
+
 export class WithingsApiError extends Error {
 	constructor(
 		public kind: WithingsFailureKind,

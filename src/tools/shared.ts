@@ -3,7 +3,13 @@
 // user-visible categories, and allowlist-only logging. Tools stay thin.
 
 import type { ErrorCategory } from "../errors";
-import { WithingsApiError } from "../errors";
+import {
+	notLinkedMessage,
+	reauthMessage,
+	rejectedMessage,
+	unavailableMessage,
+	WithingsApiError,
+} from "../errors";
 import { addDaysYmd, todayYmd } from "../normalize";
 import { postWithings } from "../withings/client";
 import { devicesBodySchema } from "../withings/schemas";
@@ -43,7 +49,7 @@ function assertYmd(value: string, paramName: string): void {
 	if (!YMD_PATTERN.test(value)) {
 		throw new ToolError(
 			"invalid_request",
-			`The ${paramName} date "${value}" isn't valid — use YYYY-MM-DD format, e.g. 2026-07-01.`,
+			`The ${paramName} date "${value}" isn't valid. Use YYYY-MM-DD format, e.g. 2026-07-01.`,
 		);
 	}
 }
@@ -71,7 +77,7 @@ export async function resolveDateRange(
 	if (startYmd > endYmd) {
 		throw new ToolError(
 			"invalid_request",
-			`The start date ${startYmd} is after the end date ${endYmd} — swap them and try again.`,
+			`The start date ${startYmd} is after the end date ${endYmd}. Swap them and try again.`,
 		);
 	}
 	return { startYmd, endYmd };
@@ -95,16 +101,26 @@ export async function resolveUserTimezone(
 	return cache.tz;
 }
 
-/** Standard empty-state note (PLAN.md §6: graceful empty states). */
+/**
+ * Standard empty-state note (PLAN.md §6: graceful empty states). The optional
+ * deviceHint names the device capability this data needs, so Claude can
+ * distinguish "no data" from "no capable device" without an extra call; the
+ * imported-data clause covers the most common false bug report (Apple Health
+ * imports show in the Withings app but never through the API).
+ */
 export function emptyNote(
 	what: string,
 	range?: { startYmd: string; endYmd: string },
+	deviceHint?: string,
 ): string {
 	const scope = range ? ` between ${range.startYmd} and ${range.endYmd}` : "";
+	const hint = deviceHint ? ` Recording ${what} requires ${deviceHint}.` : "";
 	return (
-		`No ${what} found${scope}. The device may not have synced yet — opening ` +
-		`the Withings app usually triggers a sync. Call get_devices to check ` +
-		`that a suitable device is connected and its battery isn't low.`
+		`No ${what} found${scope}.${hint} The device may not have synced yet. ` +
+		`Opening the Withings app usually triggers a sync. Call get_devices to ` +
+		`check that a suitable device is connected and its battery isn't low. ` +
+		`Data imported from other apps (like Apple Health) shows in the ` +
+		`Withings app but never through this connection.`
 	);
 }
 
@@ -113,7 +129,7 @@ export function moreNote(
 	more: number | boolean | undefined,
 ): string | undefined {
 	return more
-		? "More records exist in this range — narrow the date range to see the rest."
+		? "More records exist in this range. Narrow the date range to see the rest."
 		: undefined;
 }
 
@@ -150,11 +166,7 @@ export async function runTool(
 	};
 
 	if (!withingsUserId) {
-		return finish(
-			"needs_reauth",
-			"No Withings account is linked to this session. Reconnect the Wellspring connector in Claude's settings to start over.",
-			true,
-		);
+		return finish("needs_reauth", notLinkedMessage(), true);
 	}
 
 	const reconnectUrl = `${ctx.env.PUBLIC_ORIGIN}/withings/connect`;
@@ -164,17 +176,9 @@ export async function runTool(
 	const token = await stub.getAccessToken();
 	if (!token.ok) {
 		if (token.error === "needs_reauth") {
-			return finish(
-				"needs_reauth",
-				`The Withings connection needs a quick one-click reconnect. Ask the user to open ${reconnectUrl} — it takes about 30 seconds.`,
-				true,
-			);
+			return finish("needs_reauth", reauthMessage(reconnectUrl), true);
 		}
-		return finish(
-			"withings_unavailable",
-			"Withings didn't respond just now. Please try again in a minute.",
-			true,
-		);
+		return finish("withings_unavailable", unavailableMessage(), true);
 	}
 
 	try {
@@ -185,19 +189,11 @@ export async function runTool(
 			return finish(error.category, error.userMessage, true);
 		}
 		if (error instanceof WithingsApiError && error.kind === "invalid_grant") {
-			return finish(
-				"needs_reauth",
-				"Withings rejected this connection. Run get_connection_status to check it — the user may need a quick reconnect.",
-				true,
-			);
+			return finish("needs_reauth", rejectedMessage(), true);
 		}
 		// Transient upstream failures and unparseable responses both degrade to
 		// a plain retry message — never raw errors or stacks (PLAN.md §7).
-		return finish(
-			"withings_unavailable",
-			"Withings didn't respond just now. Please try again in a minute.",
-			true,
-		);
+		return finish("withings_unavailable", unavailableMessage(), true);
 	}
 }
 
@@ -214,7 +210,8 @@ export function asNumber(value: unknown): number | undefined {
 	return undefined;
 }
 
-async function hashUserId(withingsUserId: string): Promise<string> {
+/** 12-hex-char SHA-256 prefix — the only user identifier that may be logged. */
+export async function hashUserId(withingsUserId: string): Promise<string> {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(withingsUserId),

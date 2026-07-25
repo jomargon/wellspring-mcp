@@ -49,6 +49,16 @@
 	"observability": {
 		"enabled": true
 	},
+	// Per-IP rate limiting on the auth routes (PLAN.md §7). Workers Rate
+	// Limiting API — free plan, open beta. namespace_id is an arbitrary
+	// account-unique positive integer.
+	"ratelimits": [
+		{
+			"name": "AUTH_RATE_LIMIT",
+			"namespace_id": "1001",
+			"simple": { "limit": 10, "period": 60 }
+		}
+	],
 	// Non-secret config: public origin used to build re-auth links in tool
 	// errors (the MCP layer has no request URL to derive it from).
 	"vars": {
@@ -81,6 +91,13 @@
 				{
 					"binding": "OAUTH_KV",
 					"id": "<Add-Prod-KV-ID-in-Phase-5>"
+				}
+			],
+			"ratelimits": [
+				{
+					"name": "AUTH_RATE_LIMIT",
+					"namespace_id": "1001",
+					"simple": { "limit": 10, "period": 60 }
 				}
 			],
 			"vars": {

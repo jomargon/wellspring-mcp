@@ -92,6 +92,50 @@ describe("postWithings envelope handling", () => {
 	});
 });
 
+describe("601 rate-limit retry (PLAN.md §4)", () => {
+	function mockWithingsSequence(envelopes: unknown[]) {
+		const queue = [...envelopes];
+		return vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+			const envelope = queue.shift() ?? { status: 601 };
+			return new Response(JSON.stringify(envelope), { status: 200 });
+		});
+	}
+
+	it("retries exactly once after a 601 and succeeds", async () => {
+		const spy = mockWithingsSequence([
+			{ status: 601 },
+			{ status: 0, body: { ok: true } },
+		]);
+		await expect(
+			postWithings("/measure", { action: "getmeas" }, { retryDelayMs: 0 }),
+		).resolves.toEqual({ ok: true });
+		expect(spy).toHaveBeenCalledTimes(2);
+	});
+
+	it("stays transient when the retry is also rate-limited", async () => {
+		const spy = mockWithingsSequence([{ status: 601 }, { status: 601 }]);
+		const error = await postWithings(
+			"/measure",
+			{ action: "getmeas" },
+			{ retryDelayMs: 0 },
+		).catch((e) => e);
+		expect((error as WithingsApiError).kind).toBe("transient");
+		expect((error as WithingsApiError).withingsStatus).toBe(601);
+		expect(spy).toHaveBeenCalledTimes(2);
+	});
+
+	it("never retries other non-zero statuses", async () => {
+		const spy = mockWithingsSequence([{ status: 503 }]);
+		const error = await postWithings(
+			"/measure",
+			{ action: "getmeas" },
+			{ retryDelayMs: 0 },
+		).catch((e) => e);
+		expect((error as WithingsApiError).withingsStatus).toBe(503);
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("signature v2", () => {
 	// Vectors computed independently (Python hmac) from the documented recipe:
 	// values of alphabetically-sorted keys, comma-joined, HMAC-SHA256, hex.
