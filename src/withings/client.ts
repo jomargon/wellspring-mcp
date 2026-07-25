@@ -5,6 +5,13 @@ export const WITHINGS_API_BASE = "https://wbsapi.withings.net";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+// Withings 601 = "too many requests" (~120/min cap). One retry with backoff
+// (PLAN.md §4). RATE_LIMITED_STATUS requests were never processed upstream,
+// so retrying is safe even for requesttoken — the single-use refresh token
+// was not consumed.
+const RATE_LIMITED_STATUS = 601;
+const DEFAULT_RETRY_DELAY_MS = 1_000;
+
 // Withings status codes meaning "your credential/token is bad" (docs: 100–102
 // and 200 are "Authentication failed"; 401/342/343 appear on the token
 // endpoints for invalid or expired grants). These — or an error string
@@ -19,8 +26,40 @@ const INVALID_GRANT_STATUSES = new Set([100, 101, 102, 200, 401, 342, 343]);
  * Enforces the project-wide rule in one place: HTTP 200 with `status !== 0`
  * is an ERROR. Throws WithingsApiError classified as "invalid_grant" or
  * "transient" — never containing response bodies or tokens (log hygiene).
+ * A 601 (rate limited) is retried exactly once after a short jittered delay;
+ * a second 601 surfaces as transient.
  */
 export async function postWithings(
+	path: string,
+	params: Record<string, string>,
+	options: {
+		timeoutMs?: number;
+		accessToken?: string;
+		retryDelayMs?: number;
+	} = {},
+): Promise<unknown> {
+	try {
+		return await attemptWithings(path, params, options);
+	} catch (error) {
+		if (
+			error instanceof WithingsApiError &&
+			error.withingsStatus === RATE_LIMITED_STATUS
+		) {
+			const delay = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+			// Proportional jitter so concurrent callers don't retry in lockstep
+			// (and a 0ms test delay stays 0ms).
+			await sleep(delay * (1 + Math.random() * 0.25));
+			return attemptWithings(path, params, options);
+		}
+		throw error;
+	}
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function attemptWithings(
 	path: string,
 	params: Record<string, string>,
 	options: { timeoutMs?: number; accessToken?: string } = {},

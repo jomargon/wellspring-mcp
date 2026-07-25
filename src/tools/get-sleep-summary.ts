@@ -131,7 +131,14 @@ export async function handle(
 			});
 
 		if (nights.length === 0) {
-			return { nights: [], note: emptyNote("sleep data", range) };
+			return {
+				nights: [],
+				note: emptyNote(
+					"sleep data",
+					range,
+					"a Withings sleep tracker (sleep mat or watch)",
+				),
+			};
 		}
 		const note = moreNote(body.more);
 		return { nights, ...(note && { note }) };

@@ -10,12 +10,20 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 4** (UX & hardening — see PLAN.md §11. Phase 3 verified
-2026-07-23: all seven tools + server `instructions` live on the dev worker,
-Inspector-tested against the demo user and a real account; 62 tests green.
-Tools share `src/tools/shared.ts` (`runTool` = token fetch → error mapping →
-allowlist logging); timezone comes from `getdevice`, cached per session.
-Rung 2 of the recovery ladder is mock-tested only — a live
+**Current phase: 5** (production deploy — see PLAN.md §11. Phase 4 landed
+2026-07-24: 84 tests green; pages + security headers + disconnect/revoke +
+601 retry + rate limiting live on the dev worker; audit probes passed; E2E in
+Claude verified. Phase 5 scope: GitHub Actions CI (typecheck/lint/test on PR,
+`wrangler deploy` on merge via a Workers-scoped API token), create the prod
+KV namespace and replace the placeholder id in `wrangler.jsonc`
+`env.production`, prod secrets via `wrangler secret put -e production`, prod
+Withings app redirect URI (`https://wellspring.fit/withings/callback`),
+connect the prod URL, deauthorize the dev connector. Still pending from
+Phase 4, developer-only: repo flip to public plus GitHub secret scanning and
+push protection (enable Dependabot while private; secret scanning becomes
+free only once public). User-facing copy stays client-neutral (any remote-MCP
+assistant) and free of em dashes / AI-sounding phrasing (developer
+preference). Rung 2 of the recovery ladder is mock-tested only — a live
 `withings_token_recovery` log event is expected ~never; investigate if the
 counter climbs.)
 
@@ -66,6 +74,12 @@ counter climbs.)
 - Withings exact-matches the registered redirect URI (host + path — ours is
   `/withings/callback`, one URL per app registration), so the OAuth hop can
   only be verified against the deployed dev worker, never `localhost`.
+- In tests, `exports.default.fetch` follows redirects by default — a 302 to
+  the Withings authorize URL re-enters the worker and surfaces as a Hono 404.
+  Pass `redirect: "manual"` when asserting redirects.
+- The `AUTH_RATE_LIMIT` binding is best-effort per Cloudflare isolate/colo: a
+  small live burst may not trip it (counters are split across isolates); a
+  sustained burst does. Miniflare enforces it exactly, so tests are strict.
 
 ## Commands
 

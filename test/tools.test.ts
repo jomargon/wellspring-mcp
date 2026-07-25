@@ -4,6 +4,12 @@
 
 import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	notLinkedMessage,
+	reauthMessage,
+	rejectedMessage,
+	unavailableMessage,
+} from "../src/errors";
 import { addDaysYmd, ymdToEpoch } from "../src/normalize";
 import { handle as getActivity } from "../src/tools/get-activity";
 import { handle as getBodyMeasurements } from "../src/tools/get-body-measurements";
@@ -248,6 +254,10 @@ describe("get_sleep_summary", () => {
 		);
 		expect(payload.nights).toEqual([]);
 		expect(payload.note).toMatch(/may not have synced/i);
+		// Names the device capability needed and warns about imported data
+		// (Phase 4 empty-state pass; PLAN.md §6 "no data" vs "no device").
+		expect(payload.note).toMatch(/sleep mat or watch/i);
+		expect(payload.note).toMatch(/Apple Health/i);
 	});
 });
 
@@ -626,5 +636,27 @@ describe("shared error mapping", () => {
 			expect(line).not.toContain("synthetic-access-token");
 			expect(line).not.toContain("Body+");
 		}
+	});
+});
+
+describe("user-visible error copy", () => {
+	it("every category message names a corrective action, no status codes", () => {
+		const reconnectUrl = "https://dev.example/withings/connect";
+		const messages = [
+			notLinkedMessage(),
+			reauthMessage(reconnectUrl),
+			rejectedMessage(),
+			unavailableMessage(),
+		];
+		for (const message of messages) {
+			// Plain language: an action the user (or Claude) can take…
+			expect(message).toMatch(/reconnect|try again|check/i);
+			// …and no raw upstream status codes or jargon (PLAN.md §7 taxonomy).
+			// The reconnect link itself is allowed — strip URLs before checking.
+			const withoutUrls = message.replace(/https?:\/\/\S+/g, "");
+			expect(withoutUrls).not.toMatch(/\b\d{3}\b/);
+			expect(withoutUrls).not.toMatch(/oauth|http|token/i);
+		}
+		expect(reauthMessage(reconnectUrl)).toContain(reconnectUrl);
 	});
 });

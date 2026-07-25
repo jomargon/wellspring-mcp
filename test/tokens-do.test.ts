@@ -251,7 +251,9 @@ describe("UserTokensDO refresh ladder", () => {
 		await stub.setTokens(nearExpiredRecord());
 
 		const calls = mockWithings({
-			refresh: () => withingsJson(601), // rate limited — transient
+			// 503 (not 601): a 601 is now retried inside postWithings itself,
+			// which would double the call count this test measures.
+			refresh: () => withingsJson(503), // service unavailable — transient
 		});
 
 		const result = await stub.getAccessToken();

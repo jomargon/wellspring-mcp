@@ -57,12 +57,65 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 export { UserTokensDO };
 
-export default new OAuthProvider({
-	allowPlainPKCE: false,
-	apiHandler: MyMCP.serve("/mcp"),
-	apiRoute: "/mcp",
-	authorizeEndpoint: "/authorize",
-	clientRegistrationEndpoint: "/register",
-	defaultHandler: WithingsHandler as unknown as ExportedHandler,
-	tokenEndpoint: "/token",
-});
+// Non-MCP routes (auth pages, OAuth endpoints) never legitimately carry large
+// bodies; /mcp payloads are validated by the MCP SDK + zod instead.
+const MAX_BODY_BYTES = 100_000;
+
+/**
+ * Global response hardening (PLAN.md §7): HSTS, nosniff, and a strict referrer
+ * policy on every response — provider-internal routes (/token, /register,
+ * /.well-known/*) included — plus a request body size guard.
+ */
+function withSecurityHeaders(
+	handler: ExportedHandler<Env>,
+): ExportedHandler<Env> {
+	return {
+		async fetch(request, env, ctx) {
+			const { pathname } = new URL(request.url);
+			const contentLength = Number(
+				request.headers.get("Content-Length") ?? "0",
+			);
+			if (!pathname.startsWith("/mcp") && contentLength > MAX_BODY_BYTES) {
+				return securedResponse(
+					new Response("Request body too large", { status: 413 }),
+				);
+			}
+			if (!handler.fetch) {
+				return new Response("Not found", { status: 404 });
+			}
+			const response = await handler.fetch(
+				request as Parameters<NonNullable<ExportedHandler<Env>["fetch"]>>[0],
+				env,
+				ctx,
+			);
+			// WebSocket upgrade responses must pass through untouched.
+			if (response.webSocket) {
+				return response;
+			}
+			return securedResponse(response);
+		},
+	};
+}
+
+function securedResponse(response: Response): Response {
+	const secured = new Response(response.body, response);
+	secured.headers.set(
+		"Strict-Transport-Security",
+		"max-age=31536000; includeSubDomains",
+	);
+	secured.headers.set("X-Content-Type-Options", "nosniff");
+	secured.headers.set("Referrer-Policy", "no-referrer");
+	return secured;
+}
+
+export default withSecurityHeaders(
+	new OAuthProvider({
+		allowPlainPKCE: false,
+		apiHandler: MyMCP.serve("/mcp"),
+		apiRoute: "/mcp",
+		authorizeEndpoint: "/authorize",
+		clientRegistrationEndpoint: "/register",
+		defaultHandler: WithingsHandler as unknown as ExportedHandler,
+		tokenEndpoint: "/token",
+	}) as unknown as ExportedHandler<Env>,
+);

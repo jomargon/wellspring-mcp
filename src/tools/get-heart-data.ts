@@ -94,7 +94,14 @@ export async function handle(
 			}));
 
 		if (readings.length === 0) {
-			return { readings: [], note: emptyNote("heart readings", range) };
+			return {
+				readings: [],
+				note: emptyNote(
+					"heart readings",
+					range,
+					"a Withings device with heart-rate, ECG, or blood pressure support",
+				),
+			};
 		}
 		const note = moreNote(body.more);
 		return { readings, ...(note && { note }) };

@@ -166,7 +166,14 @@ export async function handle(
 			});
 
 		if (measurements.length === 0) {
-			return { measurements: [], note: emptyNote("body measurements", range) };
+			return {
+				measurements: [],
+				note: emptyNote(
+					"body measurements",
+					range,
+					"a Withings smart scale or blood pressure monitor",
+				),
+			};
 		}
 		const note = moreNote(body.more);
 		return { measurements, ...(note && { note }) };

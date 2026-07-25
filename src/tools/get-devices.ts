@@ -60,7 +60,7 @@ export async function handle(
 					.map((d) => d.model ?? d.type ?? "device")
 					.join(
 						" and ",
-					)} battery is low — a drained battery is a common cause of missing or stale data. Suggest charging or replacing it.`,
+					)} battery is low. A drained battery is a common cause of missing or stale data. Suggest charging or replacing it.`,
 			}),
 		};
 	});
