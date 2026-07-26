@@ -7,7 +7,9 @@
 	"name": "wellspring-mcp-dev",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
@@ -20,11 +22,15 @@
 	 */
 	"migrations": [
 		{
-			"new_sqlite_classes": ["MyMCP"],
+			"new_sqlite_classes": [
+				"MyMCP"
+			],
 			"tag": "v1"
 		},
 		{
-			"new_sqlite_classes": ["UserTokensDO"],
+			"new_sqlite_classes": [
+				"UserTokensDO"
+			],
 			"tag": "v2"
 		}
 	],
@@ -56,7 +62,10 @@
 		{
 			"name": "AUTH_RATE_LIMIT",
 			"namespace_id": "1001",
-			"simple": { "limit": 10, "period": 60 }
+			"simple": {
+				"limit": 10,
+				"period": 60
+			}
 		}
 	],
 	// Non-secret config: public origin used to build re-auth links in tool
@@ -68,13 +77,22 @@
 		"port": 8788
 	},
 	"env": {
-		// Config-only stub until Phase 5 (first production deploy): bindings are not
-		// inherited by named environments, so they're mirrored here. The production
-		// KV namespace doesn't exist yet — create it and replace the placeholder ID
-		// in Phase 5.
+		// Bindings are not inherited by named environments, so they're mirrored
+		// here. First deploy is manual (npm run deploy:production); after that,
+		// CI deploys on merge to main.
 		"production": {
 			"name": "wellspring-mcp",
-			"routes": [{ "pattern": "wellspring.fit", "custom_domain": true }],
+			"routes": [
+				{
+					"pattern": "wellspring.fit",
+					"custom_domain": true
+				}
+			],
+			// The custom domain is the only origin: no workers.dev hostname, no
+			// preview URLs. A second origin would break PUBLIC_ORIGIN, cookies,
+			// and OAuth redirect assumptions.
+			"workers_dev": false,
+			"preview_urls": false,
 			"durable_objects": {
 				"bindings": [
 					{
@@ -90,14 +108,17 @@
 			"kv_namespaces": [
 				{
 					"binding": "OAUTH_KV",
-					"id": "<Add-Prod-KV-ID-in-Phase-5>"
+					"id": "cc1a5f21aaa54886a70702954c379a27"
 				}
 			],
 			"ratelimits": [
 				{
 					"name": "AUTH_RATE_LIMIT",
 					"namespace_id": "1001",
-					"simple": { "limit": 10, "period": 60 }
+					"simple": {
+						"limit": 10,
+						"period": 60
+					}
 				}
 			],
 			"vars": {
