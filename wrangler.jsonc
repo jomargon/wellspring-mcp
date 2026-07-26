@@ -7,9 +7,7 @@
 	"name": "wellspring-mcp-dev",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
@@ -22,15 +20,11 @@
 	 */
 	"migrations": [
 		{
-			"new_sqlite_classes": [
-				"MyMCP"
-			],
+			"new_sqlite_classes": ["MyMCP"],
 			"tag": "v1"
 		},
 		{
-			"new_sqlite_classes": [
-				"UserTokensDO"
-			],
+			"new_sqlite_classes": ["UserTokensDO"],
 			"tag": "v2"
 		}
 	],
