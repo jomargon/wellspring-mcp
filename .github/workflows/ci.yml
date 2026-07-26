@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel superseded PR runs, but never cancel a main-branch run mid-deploy.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run type-check
+
+      - run: npm run lint
+
+      - run: npm audit --audit-level=high
+
+      # Tests run in the real Workers runtime and read secrets-shaped config
+      # from .dev.vars (gitignored locally). These are throwaway dummy values,
+      # never real credentials; the crypto module requires 64 hex chars.
+      - name: Create test vars
+        run: |
+          {
+            echo "WITHINGS_CLIENT_ID=ci-test-client-id"
+            echo "WITHINGS_CLIENT_SECRET=ci-test-client-secret"
+            echo "TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+            echo "COOKIE_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+          } > .dev.vars
+
+      - run: npm test
+
+  deploy:
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # wrangler-action reuses the lockfile-pinned wrangler from node_modules.
+      - run: npm ci
+
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy --env production
