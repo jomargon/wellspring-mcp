@@ -11,28 +11,39 @@ function hit(path: string, ip: string): Promise<Response> {
 	});
 }
 
+// Miniflare's rate-limit simulator counts within epoch-aligned 60s windows
+// and resets at each boundary, so a burst can straddle two windows. A burst
+// of 23 puts at least 12 requests in one window (limit is 10), guaranteeing
+// a throttled response wherever the boundary falls.
+const BURST = 23;
+
 describe("auth-route rate limiting", () => {
 	it("returns 429 after the per-IP limit and leaves other IPs unaffected", async () => {
 		const limited: number[] = [];
-		for (let i = 0; i < 12; i++) {
+		for (let i = 0; i < BURST; i++) {
 			const response = await hit("/withings/connect", "203.0.113.7");
 			limited.push(response.status);
 		}
-		// First requests pass (302 to Withings), the tail is throttled.
+		// First request passes (302 to Withings), the burst gets throttled.
 		expect(limited[0]).toBe(302);
-		expect(limited[limited.length - 1]).toBe(429);
+		expect(limited).toContain(429);
 
 		const otherIp = await hit("/withings/connect", "203.0.113.99");
 		expect(otherIp.status).toBe(302);
 	});
 
 	it("serves the 429 as a friendly page with one corrective action", async () => {
-		for (let i = 0; i < 12; i++) {
-			await hit("/disconnect", "203.0.113.8");
+		let throttled: Response | undefined;
+		for (let i = 0; i < BURST; i++) {
+			const response = await hit("/disconnect", "203.0.113.8");
+			if (response.status === 429) {
+				throttled = response;
+				break;
+			}
 		}
-		const response = await hit("/disconnect", "203.0.113.8");
-		expect(response.status).toBe(429);
-		const html = await response.text();
+		expect(throttled).toBeDefined();
+		if (!throttled) return;
+		const html = await throttled.text();
 		expect(html.toLowerCase()).toContain("try again");
 		expect(html).not.toContain("<script");
 	});

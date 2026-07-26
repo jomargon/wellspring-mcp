@@ -79,7 +79,10 @@ counter climbs.)
   Pass `redirect: "manual"` when asserting redirects.
 - The `AUTH_RATE_LIMIT` binding is best-effort per Cloudflare isolate/colo: a
   small live burst may not trip it (counters are split across isolates); a
-  sustained burst does. Miniflare enforces it exactly, so tests are strict.
+  sustained burst does. Miniflare simulates it with epoch-aligned 60s windows
+  that reset at each boundary, so a test burst can straddle two windows and
+  never trip the limit (flaked in CI once). Rate-limit tests must use a burst
+  of ≥ 2×limit+3 and assert "contains a 429", never "the Nth request is 429".
 
 ## Commands
 
