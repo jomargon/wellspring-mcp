@@ -2,6 +2,7 @@
 // OAuth utility functions with CSRF and state validation security fixes
 
 import type { ClientInfo } from "@cloudflare/workers-oauth-provider";
+import { bytesToHex, sha256Hex } from "./hex";
 import { htmlResponse } from "./pages/layout";
 
 /**
@@ -195,6 +196,40 @@ export function sanitizeUrl(url: string): string {
 }
 
 /**
+ * Base64 over UTF-8 bytes. Plain btoa throws on any character above U+00FF,
+ * which a spec-legal client can put in its state or registered metadata —
+ * every base64 encode of client-influenced text must go through these.
+ */
+function utf8ToBase64(text: string): string {
+	const bytes = new TextEncoder().encode(text);
+	let binary = "";
+	for (const byte of bytes) {
+		binary += String.fromCharCode(byte);
+	}
+	return btoa(binary);
+}
+
+/** Inverse of utf8ToBase64. Throws on malformed input; callers guard. */
+function base64ToUtf8(encoded: string): string {
+	const binary = atob(encoded);
+	const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+	return new TextDecoder().decode(bytes);
+}
+
+/** Encodes a JSON-serializable value as base64 over its UTF-8 bytes. */
+export function encodeState(value: unknown): string {
+	return utf8ToBase64(JSON.stringify(value));
+}
+
+/**
+ * Decodes encodeState output. Throws on malformed input; callers wrap in
+ * their own try and reject the request.
+ */
+export function decodeState<T>(encoded: string): T {
+	return JSON.parse(base64ToUtf8(encoded)) as T;
+}
+
+/**
  * Generates a new CSRF token and corresponding cookie for form protection
  * @returns Object containing the token and Set-Cookie header value
  */
@@ -297,13 +332,7 @@ export async function bindStateToSession(
 	const consentedStateCookieName = "__Host-CONSENTED_STATE";
 
 	// Hash the state token to provide defense-in-depth
-	const encoder = new TextEncoder();
-	const data = encoder.encode(stateToken);
-	const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const hashHex = hashArray
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
+	const hashHex = await sha256Hex(stateToken);
 
 	const setCookie = `${consentedStateCookieName}=${hashHex}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=600`;
 
@@ -361,13 +390,7 @@ export async function validateOAuthState<T>(
 	}
 
 	// Hash the state from query and compare with cookie
-	const encoder = new TextEncoder();
-	const data = encoder.encode(stateFromQuery);
-	const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const stateHash = hashArray
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
+	const stateHash = await sha256Hex(stateFromQuery);
 
 	if (stateHash !== consentedStateHash) {
 		throw new OAuthError(
@@ -435,7 +458,9 @@ export async function addApprovedClient(
 
 	const payload = JSON.stringify(updatedApprovedClients);
 	const signature = await signData(payload, cookieSecret);
-	const cookieValue = `${signature}.${btoa(payload)}`;
+	// UTF-8-safe encode: the clientId comes from client-supplied form state,
+	// so bare btoa would throw on non-Latin1 ids and 500 the approval POST.
+	const cookieValue = `${signature}.${utf8ToBase64(payload)}`;
 
 	return `${approvedClientsCookieName}=${cookieValue}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=${THIRTY_DAYS_IN_SECONDS}`;
 }
@@ -486,7 +511,7 @@ export function renderApprovalDialog(
 ): Response {
 	const { client, server, state, csrfToken, setCookie } = options;
 
-	const encodedState = btoa(JSON.stringify(state));
+	const encodedState = encodeState(state);
 
 	const serverName = sanitizeText(server.name);
 	const clientName = client?.clientName
@@ -670,7 +695,15 @@ async function getApprovedClientsFromCookie(
 
 	const [signatureHex, base64Payload] = parts;
 	if (!signatureHex || !base64Payload) return null;
-	const payload = atob(base64Payload);
+	// A corrupted cookie must read as "no approvals", not throw: this cookie
+	// lives 30 days and an unhandled decode error here would 500 every
+	// /authorize from that browser until it expires.
+	let payload: string;
+	try {
+		payload = base64ToUtf8(base64Payload);
+	} catch (_e) {
+		return null;
+	}
 
 	const isValid = await verifySignature(signatureHex, payload, cookieSecret);
 
@@ -698,9 +731,7 @@ async function signData(data: string, secret: string): Promise<string> {
 		key,
 		enc.encode(data),
 	);
-	return Array.from(new Uint8Array(signatureBuffer))
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
+	return bytesToHex(signatureBuffer);
 }
 
 async function verifySignature(

@@ -591,7 +591,10 @@ describe("shared error mapping", () => {
 		mockWithingsData({ getdevice: () => withingsJson(401) });
 		const result = await getDevices(ctx, cache, {});
 		expect(result.isError).toBe(true);
-		expect(textOf(result)).toMatch(/get_connection_status/);
+		// One corrective action (CLAUDE.md): the reconnect link. The silent
+		// dead-token report to the DO happens alongside.
+		expect(textOf(result)).toMatch(/reconnect/i);
+		expect(textOf(result)).toMatch(/\/withings\/connect/);
 	});
 
 	it("degrades a malformed response body to the retry message without leaking details", async () => {
@@ -645,7 +648,7 @@ describe("user-visible error copy", () => {
 		const messages = [
 			notLinkedMessage(),
 			reauthMessage(reconnectUrl),
-			rejectedMessage(),
+			rejectedMessage(reconnectUrl),
 			unavailableMessage(),
 		];
 		for (const message of messages) {
@@ -658,5 +661,6 @@ describe("user-visible error copy", () => {
 			expect(withoutUrls).not.toMatch(/oauth|http|token/i);
 		}
 		expect(reauthMessage(reconnectUrl)).toContain(reconnectUrl);
+		expect(rejectedMessage(reconnectUrl)).toContain(reconnectUrl);
 	});
 });

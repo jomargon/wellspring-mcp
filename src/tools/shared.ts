@@ -2,7 +2,7 @@
 // runTool() — token fetch from the per-user DO, error mapping onto the three
 // user-visible categories, and allowlist-only logging. Tools stay thin.
 
-import type { ErrorCategory } from "../errors";
+import type { ErrorCategory, TokenResult } from "../errors";
 import {
 	notLinkedMessage,
 	reauthMessage,
@@ -10,8 +10,9 @@ import {
 	unavailableMessage,
 	WithingsApiError,
 } from "../errors";
+import { sha256Hex } from "../hex";
 import { addDaysYmd, todayYmd } from "../normalize";
-import { postWithings } from "../withings/client";
+import { postWithings, TOKEN_REJECTED_STATUSES } from "../withings/client";
 import { devicesBodySchema } from "../withings/schemas";
 
 export interface ToolContext {
@@ -134,6 +135,21 @@ export function moreNote(
 }
 
 /**
+ * Await a DO RPC, mapping a thrown transport/storage error to null. An
+ * uncaught throw would escape to the MCP SDK, which echoes the raw error
+ * message into chat (PLAN.md §7: never raw upstream errors). Logs the
+ * failure so DO trouble stays observable (allowlist: event name only).
+ */
+export async function safeDoCall<T>(call: () => Promise<T>): Promise<T | null> {
+	try {
+		return await call();
+	} catch (_error) {
+		console.log(JSON.stringify({ event: "do_rpc_failure" }));
+		return null;
+	}
+}
+
+/**
  * Run a tool body with token resolution, error mapping, and allowlist
  * logging. `fn` returns the compact JSON payload for Claude.
  */
@@ -173,7 +189,12 @@ export async function runTool(
 	const stub = ctx.env.USER_TOKENS.get(
 		ctx.env.USER_TOKENS.idFromName(withingsUserId),
 	);
-	const token = await stub.getAccessToken();
+	// Explicit generic: the RPC stub's promise-like return type defeats
+	// inference of the TokenResult discriminated union.
+	const token = await safeDoCall<TokenResult>(() => stub.getAccessToken());
+	if (!token) {
+		return finish("withings_unavailable", unavailableMessage(), true);
+	}
 	if (!token.ok) {
 		if (token.error === "needs_reauth") {
 			return finish("needs_reauth", reauthMessage(reconnectUrl), true);
@@ -189,7 +210,17 @@ export async function runTool(
 			return finish(error.category, error.userMessage, true);
 		}
 		if (error instanceof WithingsApiError && error.kind === "invalid_grant") {
-			return finish("needs_reauth", rejectedMessage(), true);
+			// Report only when the status says the access token itself was
+			// rejected (TOKEN_REJECTED_STATUSES); signature/nonce statuses must
+			// not force a refresh. Best-effort: the message's reconnect link
+			// works whether or not the report lands.
+			if (
+				error.withingsStatus !== undefined &&
+				TOKEN_REJECTED_STATUSES.has(error.withingsStatus)
+			) {
+				await safeDoCall(() => stub.reportInvalidToken(token.accessToken));
+			}
+			return finish("needs_reauth", rejectedMessage(reconnectUrl), true);
 		}
 		// Transient upstream failures and unparseable responses both degrade to
 		// a plain retry message — never raw errors or stacks (PLAN.md §7).
@@ -212,12 +243,5 @@ export function asNumber(value: unknown): number | undefined {
 
 /** 12-hex-char SHA-256 prefix — the only user identifier that may be logged. */
 export async function hashUserId(withingsUserId: string): Promise<string> {
-	const digest = await crypto.subtle.digest(
-		"SHA-256",
-		new TextEncoder().encode(withingsUserId),
-	);
-	return [...new Uint8Array(digest)]
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("")
-		.slice(0, 12);
+	return (await sha256Hex(withingsUserId)).slice(0, 12);
 }

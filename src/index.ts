@@ -1,6 +1,7 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
+import { isRateLimited } from "./rate-limit";
 import { UserTokensDO } from "./tokens/do";
 import { register as registerActivity } from "./tools/get-activity";
 import { register as registerBodyMeasurements } from "./tools/get-body-measurements";
@@ -78,6 +79,44 @@ function withSecurityHeaders(
 			if (!pathname.startsWith("/mcp") && contentLength > MAX_BODY_BYTES) {
 				return securedResponse(
 					new Response("Request body too large", { status: 413 }),
+				);
+			}
+			// /register is handled inside OAuthProvider before the default
+			// handler, so the Hono rate-limit middleware never sees it, and
+			// every registration is a KV write (free-tier KV allows 1,000/day —
+			// PLAN.md §7). OPTIONS is exempt: preflights write nothing, and a
+			// throttled preflight would block the real POST with an unreadable
+			// browser error. /token is deliberately NOT limited: hosted MCP
+			// clients call it from shared egress IPs, so a per-IP bucket there
+			// throttles legitimate refreshes, and PKCE + client secrets already
+			// gate that endpoint. The same shared-egress concern applies to
+			// /register in principle, but the KV write quota needs the guard
+			// and real registration bursts are tiny (Withings caps integrations
+			// at 10 users until production approval).
+			if (
+				pathname === "/register" &&
+				request.method !== "OPTIONS" &&
+				(await isRateLimited(request, env))
+			) {
+				return securedResponse(
+					new Response(
+						JSON.stringify({
+							error: "temporarily_unavailable",
+							error_description: "Too many requests. Try again in a minute.",
+						}),
+						{
+							status: 429,
+							headers: {
+								// The provider serves /register CORS-open; mirror that so
+								// a browser client can read the 429 and its Retry-After
+								// (not a CORS-safelisted header, so it must be exposed).
+								"Access-Control-Allow-Origin": "*",
+								"Access-Control-Expose-Headers": "Retry-After",
+								"Content-Type": "application/json",
+								"Retry-After": "60",
+							},
+						},
+					),
 				);
 			}
 			if (!handler.fetch) {

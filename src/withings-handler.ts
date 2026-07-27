@@ -32,6 +32,7 @@ import {
 	addApprovedClient,
 	bindStateToSession,
 	createOAuthState,
+	decodeState,
 	generateCSRFProtection,
 	isClientApproved,
 	OAuthError,
@@ -75,6 +76,13 @@ app.get("/authorize", async (c) => {
 		return c.text("Invalid request", 400);
 	}
 
+	// PKCE is required, not just supported (PLAN.md §7): without a code
+	// challenge an intercepted authorization code is exchangeable by anyone.
+	// Real MCP clients always send S256, so this rejects nothing legitimate.
+	if (!oauthReqInfo.codeChallenge) {
+		return c.text("This server requires PKCE (S256 code challenge)", 400);
+	}
+
 	// `?demo=1` lets a device-less tester (or Withings reviewer) run the whole
 	// flow against Withings' demo user.
 	const demo = c.req.query("demo") === "1";
@@ -106,28 +114,42 @@ app.get("/authorize", async (c) => {
 });
 
 app.post("/authorize", async (c) => {
+	// Hoisted so the catch-all 500 can still clear the CSRF cookie once
+	// validation has succeeded: one-time use (RFC 9700) must hold on EVERY
+	// response after a successful check, failure paths included.
+	let csrfClearCookie: string | undefined;
 	try {
 		// Read form data once
 		const formData = await c.req.raw.formData();
 
-		// Validate CSRF token
-		validateCSRFToken(formData, c.req.raw);
+		const { clearCookie } = validateCSRFToken(formData, c.req.raw);
+		csrfClearCookie = clearCookie;
+		const fail = (message: string) => {
+			c.header("Set-Cookie", clearCookie);
+			return c.text(message, 400);
+		};
 
 		// Extract state from form data
 		const encodedState = formData.get("state");
 		if (!encodedState || typeof encodedState !== "string") {
-			return c.text("Missing state in form data", 400);
+			return fail("Missing state in form data");
 		}
 
 		let state: { oauthReqInfo?: AuthRequest; demo?: boolean };
 		try {
-			state = JSON.parse(atob(encodedState));
+			state = decodeState(encodedState);
 		} catch (_e) {
-			return c.text("Invalid state data", 400);
+			return fail("Invalid state data");
 		}
 
 		if (!state.oauthReqInfo?.clientId) {
-			return c.text("Invalid request", 400);
+			return fail("Invalid request");
+		}
+
+		// Defense in depth: the form state is client-supplied, so re-assert the
+		// PKCE requirement the GET handler enforced.
+		if (!state.oauthReqInfo.codeChallenge) {
+			return fail("This server requires PKCE (S256 code challenge)");
 		}
 
 		// Add client to approved list
@@ -144,19 +166,33 @@ app.post("/authorize", async (c) => {
 				oauthReqInfo: state.oauthReqInfo,
 				demo: state.demo === true,
 			},
-			[approvedClientCookie],
+			[approvedClientCookie, clearCookie],
 		);
 	} catch (error) {
 		if (error instanceof OAuthError) {
-			return error.toResponse();
+			// The only OAuthError source in this route is CSRF validation: a
+			// stale or replayed approval form (expired cookie, browser back
+			// button after approving). A normal user can hit this, so render a
+			// plain-language page, never raw JSON (PLAN.md §6).
+			return htmlResponse(staleApprovalPageHtml(), 400);
 		}
 		console.error(
 			"POST /authorize failed:",
 			error instanceof Error ? error.name : "unknown",
 		);
+		if (csrfClearCookie) {
+			c.header("Set-Cookie", csrfClearCookie);
+		}
 		return c.text("Internal server error", 500);
 	}
 });
+
+function staleApprovalPageHtml(): string {
+	return simplePageHtml(
+		"This page has expired",
+		"This approval page was already used or has expired. Close this tab and start the connection again from your AI assistant.",
+	);
+}
 
 /**
  * One-click re-auth (PLAN.md §5): any needs_reauth error links here. Runs the
