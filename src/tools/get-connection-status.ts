@@ -5,6 +5,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { notLinkedMessage } from "../errors";
 import type { ToolContext, ToolResult } from "./shared";
+import { safeDoCall } from "./shared";
 
 export const name = "get_connection_status";
 
@@ -21,7 +22,15 @@ export async function handle(ctx: ToolContext): Promise<ToolResult> {
 	const stub = ctx.env.USER_TOKENS.get(
 		ctx.env.USER_TOKENS.idFromName(withingsUserId),
 	);
-	const status = await stub.getStatus();
+	const status = await safeDoCall(() => stub.getStatus());
+	if (!status) {
+		// Infrastructure failure, not Withings: say so honestly, and flag it
+		// as an error like every other failed tool result.
+		return statusText(
+			"The connection status can't be checked right now. Try again in a minute.",
+			true,
+		);
+	}
 	const reconnectUrl = `${ctx.env.PUBLIC_ORIGIN}/withings/connect`;
 	switch (status) {
 		case "ok":
@@ -37,8 +46,10 @@ export async function handle(ctx: ToolContext): Promise<ToolResult> {
 	}
 }
 
-function statusText(text: string): ToolResult {
-	return { content: [{ text, type: "text" as const }] };
+function statusText(text: string, isError = false): ToolResult {
+	return isError
+		? { content: [{ text, type: "text" as const }], isError: true }
+		: { content: [{ text, type: "text" as const }] };
 }
 
 export function register(server: McpServer, ctx: ToolContext): void {

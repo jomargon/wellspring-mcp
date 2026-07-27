@@ -3,6 +3,7 @@
 // sort params alphabetically by key, join their VALUES with commas, HMAC-SHA256
 // with the client_secret as key, lowercase hex output.
 
+import { bytesToHex } from "../hex";
 import { postWithings } from "./client";
 import { nonceBodySchema } from "./schemas";
 
@@ -32,9 +33,7 @@ export async function signParams(
 		key,
 		encoder.encode(joined),
 	);
-	return Array.from(new Uint8Array(signature))
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
+	return bytesToHex(signature);
 }
 
 /**

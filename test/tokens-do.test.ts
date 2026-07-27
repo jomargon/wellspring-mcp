@@ -271,6 +271,118 @@ describe("UserTokensDO refresh ladder", () => {
 		});
 	});
 
+	// A mid-lifetime invalidated token (password change, revoke+regrant) must
+	// not be served until natural expiry: a reported dead token forces the
+	// next call through the normal refresh ladder.
+	it("refreshes early after a reported invalid token", async () => {
+		const stub = freshStub();
+		await stub.setTokens(
+			nearExpiredRecord({ expiresAt: Date.now() + 60 * 60_000 }),
+		);
+		const calls = mockWithings({});
+
+		await stub.reportInvalidToken("old-access-token");
+		expect(await stub.getAccessToken()).toEqual({
+			ok: true,
+			accessToken: "new-access-token",
+		});
+		expect(
+			calls.filter((c) => c.params.get("grant_type") === "refresh_token"),
+		).toHaveLength(1);
+	});
+
+	// The report is a marker compared at read time, so a stale report can
+	// never clobber a chain written after it (reconnect race).
+	it("a reconnect after a dead-token report starts clean", async () => {
+		const stub = freshStub();
+		await stub.setTokens(
+			nearExpiredRecord({ expiresAt: Date.now() + 60 * 60_000 }),
+		);
+		await stub.reportInvalidToken("old-access-token");
+		await stub.setTokens(
+			nearExpiredRecord({
+				accessToken: "reconnected-access-token",
+				expiresAt: Date.now() + 60 * 60_000,
+			}),
+		);
+
+		const calls = mockWithings({});
+		expect(await stub.getAccessToken()).toEqual({
+			ok: true,
+			accessToken: "reconnected-access-token",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
+	// Rung-3 guard: a refresh that fails after a concurrent reconnect landed
+	// must back off quietly, never write needs_reauth over the fresh chain.
+	it("a stale failing refresh never clobbers a reconnect that landed mid-flight", async () => {
+		const stub = freshStub();
+		await stub.setTokens(nearExpiredRecord());
+
+		mockWithings({
+			refresh: async () => {
+				// Hold the refresh in flight long enough for the reconnect's
+				// setTokens to land (the DO input gate is open during fetch).
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				return withingsJson(401);
+			},
+			recover: () => withingsJson(293),
+		});
+
+		const inFlight = stub.getAccessToken();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		await stub.setTokens(
+			nearExpiredRecord({
+				accessToken: "reconnected-access-token",
+				refreshToken: "reconnected-refresh-token",
+				expiresAt: Date.now() + 60 * 60_000,
+			}),
+		);
+
+		expect(await inFlight).toEqual({
+			ok: false,
+			error: "withings_unavailable",
+		});
+		expect(await stub.getStatus()).toBe("ok");
+		expect(await stub.getAccessToken()).toEqual({
+			ok: true,
+			accessToken: "reconnected-access-token",
+		});
+	});
+
+	// Disconnect erasure holds even against an in-flight report: nothing may
+	// outlive clearTokens (a wiped DO stays indistinguishable from a
+	// never-connected user).
+	it("a report landing after disconnect leaves no trace", async () => {
+		const stub = freshStub();
+		await stub.setTokens(
+			nearExpiredRecord({ expiresAt: Date.now() + 60 * 60_000 }),
+		);
+		await stub.clearTokens();
+		await stub.reportInvalidToken("old-access-token");
+
+		expect(await stub.getStatus()).toBe("not_connected");
+		await runInDurableObject(stub, async (_instance: UserTokensDO, state) => {
+			expect((await state.storage.list()).size).toBe(0);
+		});
+	});
+
+	it("ignores an invalid-token report that does not match the stored token", async () => {
+		const stub = freshStub();
+		await stub.setTokens(
+			nearExpiredRecord({ expiresAt: Date.now() + 60 * 60_000 }),
+		);
+		const calls = mockWithings({});
+
+		await stub.reportInvalidToken("some-other-token");
+		expect(await stub.getAccessToken()).toEqual({
+			ok: true,
+			accessToken: "old-access-token",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
 	it("returns the stored token untouched while it is fresh", async () => {
 		const stub = freshStub();
 		await stub.setTokens(

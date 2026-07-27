@@ -34,19 +34,28 @@ export function notLinkedMessage(): string {
 	);
 }
 
+/** The shared reconnect instruction, so the wording lives in one place. */
+function reconnectInstruction(reconnectUrl: string): string {
+	return `open ${reconnectUrl}. It takes about 30 seconds.`;
+}
+
 /** Recovery ladder exhausted — the one-click re-auth link is the fix. */
 export function reauthMessage(reconnectUrl: string): string {
 	return (
 		"The Withings connection needs a quick one-click reconnect. Ask the " +
-		`user to open ${reconnectUrl}. It takes about 30 seconds.`
+		`user to ${reconnectInstruction(reconnectUrl)}`
 	);
 }
 
-/** Withings rejected mid-call; status may already be self-healing. */
-export function rejectedMessage(): string {
+/**
+ * Withings rejected the credentials mid-call. One corrective action: the
+ * reconnect link always works, whether or not the silent self-heal (the
+ * dead-token report to the DO) already fixed things for the next call.
+ */
+export function rejectedMessage(reconnectUrl: string): string {
 	return (
-		"Withings rejected this connection. Run get_connection_status to " +
-		"check it. The user may need a quick reconnect."
+		"Withings rejected this connection. To reconnect, " +
+		reconnectInstruction(reconnectUrl)
 	);
 }
 

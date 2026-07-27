@@ -7,6 +7,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AuthState, ConnectionStatus, TokenResult } from "../errors";
 import { WithingsApiError } from "../errors";
+import { sha256Hex } from "../hex";
 import {
 	exchangeCode,
 	recoverAuthorizationCode,
@@ -17,6 +18,10 @@ import type { WithingsCredentials } from "../withings/signature";
 import { decryptString, encryptString, importEncryptionKey } from "./crypto";
 
 const EXPIRY_BUFFER_MS = 5 * 60_000;
+
+// Storage key for the SHA-256 hex of an access token reported dead by a data
+// call (see reportInvalidToken). Compared at read time in getAccessToken.
+const DEAD_TOKEN_KEY = "dead_token_hash";
 
 // TokenSet plus the redirect URI the tokens were minted with — recovery's
 // code exchange (rung 2) needs it, and the DO has no other way to know the
@@ -51,6 +56,29 @@ export class UserTokensDO extends DurableObject<Env> {
 	}
 
 	/**
+	 * A data call failed invalid_grant with a token this DO handed out —
+	 * Withings invalidated it mid-lifetime (password change, revoke+regrant).
+	 * Records a dead-token marker so the next getAccessToken() flows through
+	 * the normal refresh ladder instead of serving the dead token for up to 3h.
+	 *
+	 * Not a second token writer: it never touches the tokens key, and
+	 * consumers compare the marker against whatever record is current, so a
+	 * stale report is inert. Only a hash is stored, and only while tokens
+	 * exist — nothing outlives clearTokens' deleteAll.
+	 */
+	async reportInvalidToken(usedAccessToken: string): Promise<void> {
+		// Hash before any storage access; the get+put below touch only
+		// storage, and consecutive storage operations keep the DO input gate
+		// closed, so the existence check cannot interleave with clearTokens'
+		// deleteAll or a setTokens write. A disconnected (empty) DO therefore
+		// stays empty — nothing outlives clearTokens.
+		const deadHash = await sha256Hex(usedAccessToken);
+		const hasTokens = await this.ctx.storage.get<string>("tokens");
+		if (!hasTokens) return;
+		await this.ctx.storage.put(DEAD_TOKEN_KEY, deadHash);
+	}
+
+	/**
 	 * Resolve a usable access token, refreshing if it expires within the
 	 * buffer. Concurrent callers share one refresh: the promise cache plus the
 	 * DO's single-threaded execution make a double-refresh structurally
@@ -62,16 +90,33 @@ export class UserTokensDO extends DurableObject<Env> {
 			return { ok: false, error: "needs_reauth" };
 		}
 
-		const record = await this.#readTokens();
+		// The raw ciphertext doubles as a change detector for the rung-3 guard
+		// in #refresh: every #writeTokens encrypts with a fresh random IV, so
+		// any concurrent write produces a different blob.
+		const encrypted = await this.ctx.storage.get<string>("tokens");
+		if (!encrypted) {
+			return { ok: false, error: "needs_reauth" };
+		}
+		const record = await this.#decryptRecord(encrypted);
 		if (!record) {
 			return { ok: false, error: "needs_reauth" };
 		}
 
 		if (record.expiresAt - Date.now() > EXPIRY_BUFFER_MS) {
-			return { ok: true, accessToken: record.accessToken };
+			const deadHash = await this.ctx.storage.get<string>(DEAD_TOKEN_KEY);
+			if (!deadHash) {
+				return { ok: true, accessToken: record.accessToken };
+			}
+			if ((await sha256Hex(record.accessToken)) !== deadHash) {
+				// Marker from a superseded chain: retire it so later calls
+				// skip the extra hash. Only the marker key is touched.
+				await this.ctx.storage.delete(DEAD_TOKEN_KEY);
+				return { ok: true, accessToken: record.accessToken };
+			}
+			// Reported dead mid-lifetime: fall through to the refresh ladder.
 		}
 
-		this.#refreshInFlight ??= this.#refresh(record).finally(() => {
+		this.#refreshInFlight ??= this.#refresh(record, encrypted).finally(() => {
 			this.#refreshInFlight = null;
 		});
 		return this.#refreshInFlight;
@@ -79,7 +124,10 @@ export class UserTokensDO extends DurableObject<Env> {
 
 	// --- refresh ladder -----------------------------------------------------
 
-	async #refresh(stored: StoredTokenRecord): Promise<TokenResult> {
+	async #refresh(
+		stored: StoredTokenRecord,
+		storedBlob: string,
+	): Promise<TokenResult> {
 		const credentials = this.#credentials();
 
 		// Rung 1: refresh with the stored token; on a transient failure retry
@@ -121,7 +169,16 @@ export class UserTokensDO extends DurableObject<Env> {
 			);
 			return await this.#commit(tokens, stored.redirectUri);
 		} catch (_error) {
-			// Rung 3: recovery failed — the only path into needs_reauth.
+			// Rung 3: recovery failed — the only path into needs_reauth. Guard:
+			// flip state only if the chain this refresh failed on is still the
+			// current one. The get+put are consecutive storage ops (input gate
+			// stays closed between them), and any concurrent setTokens or
+			// clearTokens changed or removed the blob, so a stale failure backs
+			// off quietly instead of clobbering a fresh reconnect or a wiped DO.
+			const current = await this.ctx.storage.get<string>("tokens");
+			if (current !== storedBlob) {
+				return { ok: false, error: "withings_unavailable" };
+			}
 			await this.ctx.storage.put("auth_state", "needs_reauth");
 			return { ok: false, error: "needs_reauth" };
 		}
@@ -151,11 +208,13 @@ export class UserTokensDO extends DurableObject<Env> {
 		);
 		// Single put => atomic: tokens and auth_state can never disagree.
 		await this.ctx.storage.put({ tokens: encrypted, auth_state: "ok" });
+		// A new chain retires any dead-token marker. Ordering is safe: a crash
+		// in between leaves a marker that no longer matches the new access
+		// token, which reads as "no marker".
+		await this.ctx.storage.delete(DEAD_TOKEN_KEY);
 	}
 
-	async #readTokens(): Promise<StoredTokenRecord | null> {
-		const encrypted = await this.ctx.storage.get<string>("tokens");
-		if (!encrypted) return null;
+	async #decryptRecord(encrypted: string): Promise<StoredTokenRecord | null> {
 		try {
 			return JSON.parse(
 				await decryptString(await this.#key(), encrypted),

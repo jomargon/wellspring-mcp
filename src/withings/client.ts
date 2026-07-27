@@ -13,12 +13,20 @@ const RATE_LIMITED_STATUS = 601;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
 
 // Withings status codes meaning "your credential/token is bad" (docs: 100–102
-// and 200 are "Authentication failed"; 401/342/343 appear on the token
-// endpoints for invalid or expired grants). These — or an error string
-// mentioning invalid_grant — are the only trigger for the recovery ladder's
-// rung 2. Every other non-zero status is treated as transient so an unknown
-// code can never lock a user into needs_reauth.
-const INVALID_GRANT_STATUSES = new Set([100, 101, 102, 200, 401, 342, 343]);
+// and 200 are "Authentication failed"; 401 appears for invalid or expired
+// tokens). A data call failing with one of these means the access token
+// itself was rejected — the trigger for the dead-token report in
+// tools/shared.ts. Deliberately excludes 342/343 (signature/nonce problems):
+// those signal a signing bug, not a dead token, and must not force refreshes.
+export const TOKEN_REJECTED_STATUSES: ReadonlySet<number> = new Set([
+	100, 101, 102, 200, 401,
+]);
+
+// The rejected statuses plus the token-endpoint signature codes. These — or
+// an error string mentioning invalid_grant — are the only trigger for the
+// recovery ladder's rung 2. Every other non-zero status is treated as
+// transient so an unknown code can never lock a user into needs_reauth.
+const INVALID_GRANT_STATUSES = new Set([...TOKEN_REJECTED_STATUSES, 342, 343]);
 
 /**
  * POST to a Withings endpoint and return the parsed `body` payload.

@@ -48,6 +48,49 @@ describe("auth-route rate limiting", () => {
 		expect(html).not.toContain("<script");
 	});
 
+	// /register and /token are handled inside OAuthProvider before Hono, so
+	// they get their own guard in index.ts — every registration is a KV write
+	// and free-tier KV allows 1,000/day.
+	it("limits the provider-internal /register endpoint", async () => {
+		const statuses: number[] = [];
+		let throttled: Response | undefined;
+		for (let i = 0; i < BURST; i++) {
+			const response = await exports.default.fetch(
+				"http://example.com/register",
+				{
+					method: "POST",
+					headers: {
+						"CF-Connecting-IP": "203.0.113.10",
+						"content-type": "application/json",
+					},
+					body: "{}",
+				},
+			);
+			statuses.push(response.status);
+			throttled ??= response.status === 429 ? response : undefined;
+		}
+		expect(statuses).toContain(429);
+		expect(throttled).toBeDefined();
+		if (!throttled) return;
+		expect(throttled.headers.get("content-type")).toContain("application/json");
+		expect(throttled.headers.get("retry-after")).toBe("60");
+		const body = (await throttled.json()) as { error?: string };
+		expect(body.error).toBe("temporarily_unavailable");
+	});
+
+	// /token is deliberately unlimited: hosted MCP clients call it from shared
+	// egress IPs, so a per-IP bucket there throttles legitimate refreshes.
+	it("does not limit the /token endpoint", async () => {
+		for (let i = 0; i < BURST; i++) {
+			const response = await exports.default.fetch("http://example.com/token", {
+				method: "POST",
+				headers: { "CF-Connecting-IP": "203.0.113.11" },
+				body: "",
+			});
+			expect(response.status).not.toBe(429);
+		}
+	});
+
 	it("does not limit the public pages", async () => {
 		for (let i = 0; i < 15; i++) {
 			const response = await hit("/", "203.0.113.9");

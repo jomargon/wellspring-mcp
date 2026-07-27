@@ -6,14 +6,19 @@
 import type { MiddlewareHandler } from "hono";
 import { htmlResponse, layout } from "./pages/layout";
 
-export const authRateLimit: MiddlewareHandler<{ Bindings: Env }> = async (
-	c,
-	next,
-) => {
-	const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+/**
+ * Core limiter check, shared by the Hono middleware and the provider-route
+ * guard in index.ts (/register and /token never reach Hono). Returns true
+ * when the caller is over the limit.
+ */
+export async function isRateLimited(
+	request: Request,
+	env: Env,
+): Promise<boolean> {
+	const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
 	let success = true;
 	try {
-		({ success } = await c.env.AUTH_RATE_LIMIT.limit({ key: ip }));
+		({ success } = await env.AUTH_RATE_LIMIT.limit({ key: ip }));
 	} catch (_error) {
 		// Fail open — see module comment.
 	}
@@ -21,6 +26,15 @@ export const authRateLimit: MiddlewareHandler<{ Bindings: Env }> = async (
 		// Allowlist-only log: event name, nothing else (no IPs, no paths tied
 		// to identity).
 		console.log(JSON.stringify({ event: "rate_limited" }));
+	}
+	return !success;
+}
+
+export const authRateLimit: MiddlewareHandler<{ Bindings: Env }> = async (
+	c,
+	next,
+) => {
+	if (await isRateLimited(c.req.raw, c.env)) {
 		return htmlResponse(tooManyRequestsPage(), 429);
 	}
 	await next();
