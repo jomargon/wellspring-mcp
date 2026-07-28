@@ -12,6 +12,7 @@ import type {
 	OAuthHelpers,
 } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
+import iconSvg from "../icon.svg";
 import { WithingsApiError } from "./errors";
 import {
 	disconnectConfirmPage,
@@ -19,7 +20,12 @@ import {
 	disconnectPartialPage,
 } from "./pages/disconnect";
 import { landingPage } from "./pages/landing";
-import { htmlResponse, layout, stylesResponse } from "./pages/layout";
+import {
+	faviconResponse,
+	htmlResponse,
+	layout,
+	stylesResponse,
+} from "./pages/layout";
 import { privacyPage } from "./pages/privacy";
 import { authRateLimit } from "./rate-limit";
 import { hashUserId } from "./tools/shared";
@@ -59,6 +65,8 @@ app.use("/disconnect/*", authRateLimit);
 // Single shared stylesheet — keeps every page's CSP at style-src 'self'
 // with no 'unsafe-inline' (PLAN.md §7).
 app.get("/styles.css", () => stylesResponse());
+
+app.get("/favicon.svg", () => faviconResponse(iconSvg));
 
 app.get("/", () => htmlResponse(landingPage(env.PUBLIC_ORIGIN), 200));
 

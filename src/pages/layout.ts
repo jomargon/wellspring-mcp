@@ -8,8 +8,10 @@
 // form-action includes the Withings authorize origin because Safari (and some
 // Chrome versions) enforce form-action against post-submit redirects, and
 // POST /authorize 302s to account.withings.com.
+// img-src 'self' exists solely for the favicon: Firefox applies the page CSP
+// to favicon fetches. Nothing external, nothing inline.
 const CONTENT_SECURITY_POLICY =
-	"default-src 'none'; style-src 'self'; form-action 'self' https://account.withings.com; base-uri 'none'; frame-ancestors 'none'";
+	"default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' https://account.withings.com; base-uri 'none'; frame-ancestors 'none'";
 
 export const STYLES = `
 :root {
@@ -196,6 +198,7 @@ export function layout(title: string, bodyHtml: string): string {
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>${title} | Wellspring for Withings</title>
 		<link rel="stylesheet" href="/styles.css">
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 	</head>
 	<body>
 ${bodyHtml}
@@ -225,6 +228,15 @@ export function stylesResponse(): Response {
 		headers: {
 			"Cache-Control": "public, max-age=3600",
 			"Content-Type": "text/css; charset=utf-8",
+		},
+	});
+}
+
+export function faviconResponse(svg: string): Response {
+	return new Response(svg, {
+		headers: {
+			"Cache-Control": "public, max-age=86400",
+			"Content-Type": "image/svg+xml",
 		},
 	});
 }

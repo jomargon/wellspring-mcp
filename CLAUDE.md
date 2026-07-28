@@ -10,22 +10,23 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 5** (production deploy — see PLAN.md §11. Phase 4 landed
-2026-07-24: 84 tests green; pages + security headers + disconnect/revoke +
-601 retry + rate limiting live on the dev worker; audit probes passed; E2E in
-Claude verified. Phase 5 scope: GitHub Actions CI (typecheck/lint/test on PR,
-`wrangler deploy` on merge via a Workers-scoped API token), create the prod
-KV namespace and replace the placeholder id in `wrangler.jsonc`
-`env.production`, prod secrets via `wrangler secret put -e production`, prod
-Withings app redirect URI (`https://wellspring.fit/withings/callback`),
-connect the prod URL, deauthorize the dev connector. Still pending from
-Phase 4, developer-only: repo flip to public plus GitHub secret scanning and
-push protection (enable Dependabot while private; secret scanning becomes
-free only once public). User-facing copy stays client-neutral (any remote-MCP
-assistant) and free of em dashes / AI-sounding phrasing (developer
-preference). Rung 2 of the recovery ladder is mock-tested only — a live
-`withings_token_recovery` log event is expected ~never; investigate if the
-counter climbs.)
+**Current phase: 6** (Withings approval submission — see PLAN.md §11 and
+§10. Phase 5 landed 2026-07-27: production live at `wellspring.fit` behind
+CI (merge to `main` = `wrangler deploy --env production`; `checks` is an
+enforced required status check), prod secrets set, prod connector verified
+E2E in Claude, dev connector deauthorized; repo public with secret scanning
+and push protection on. A three-round multi-agent security/correctness
+review hardened the OAuth surface (PKCE required, /register rate-limited,
+CSRF one-time-use on all paths, UTF-8-safe state/cookie encoding) and the
+token DO (dead-token report marker, rung-3 clobber guard); 97 tests green.
+Phase 6 scope: verify the demo-mode flow end-to-end for a device-less
+reviewer, confirm branding compliance, submit the §10 paragraph with repo +
+privacy links via the Withings developer dashboard. Existing users stay
+under the 10-user cap while approval is pending. User-facing copy stays
+client-neutral (any remote-MCP assistant) and free of em dashes /
+AI-sounding phrasing (developer preference). Rung 2 of the recovery ladder
+is mock-tested only — a live `withings_token_recovery` log event is expected
+~never; investigate if the counter climbs.)
 
 ## Invariants — never violate, even in a "quick fix"
 

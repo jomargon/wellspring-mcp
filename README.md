@@ -30,9 +30,6 @@ Then try asking:
 - *"How active was I compared to the week before?"*
 - *"Is my Withings scale battery OK?"*
 
-> **Status:** the production URL above goes live with the first production
-> deploy. Until then, testing runs on a development worker.
-
 ## Privacy
 
 - **Read-only.** Nothing is ever written to your Withings account.

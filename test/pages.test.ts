@@ -11,7 +11,7 @@ import {
 // 'unsafe-inline'. No health data anywhere in these tests.
 
 const EXPECTED_CSP =
-	"default-src 'none'; style-src 'self'; form-action 'self' https://account.withings.com; base-uri 'none'; frame-ancestors 'none'";
+	"default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' https://account.withings.com; base-uri 'none'; frame-ancestors 'none'";
 
 function expectGlobalHeaders(response: Response) {
 	expect(response.headers.get("Strict-Transport-Security")).toBe(
@@ -60,6 +60,21 @@ describe("layout module", () => {
 	it("htmlResponse appends cookies", () => {
 		const response = htmlResponse("<p>x</p>", 200, ["a=1; Path=/"]);
 		expect(response.headers.get("Set-Cookie")).toBe("a=1; Path=/");
+	});
+
+	it("serves the favicon as SVG with a long cache and links it from pages", async () => {
+		const response = await exports.default.fetch(
+			"http://example.com/favicon.svg",
+		);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
+		expect(response.headers.get("Cache-Control")).toBe("public, max-age=86400");
+		expect(await response.text()).toContain("<svg");
+
+		const html = layout("T", "<p>x</p>");
+		expect(html).toContain(
+			'<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
+		);
 	});
 
 	it("stylesResponse serves CSS with long cache", () => {

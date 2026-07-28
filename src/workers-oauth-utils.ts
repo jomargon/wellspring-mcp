@@ -554,6 +554,7 @@ export function renderApprovalDialog(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>${clientName} | Authorization Request</title>
         <link rel="stylesheet" href="/styles.css">
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
       </head>
       <body>
         <div class="container">
