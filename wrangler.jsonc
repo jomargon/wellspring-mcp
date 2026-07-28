@@ -18,6 +18,9 @@
 	 * npx wrangler secret put TOKEN_ENCRYPTION_KEY
 	 * npx wrangler secret put COOKIE_ENCRYPTION_KEY
 	 */
+	// Bundle the favicon SVG as a text module (single source of truth: the
+	// repo-root icon.svg, also used for the Withings app registration).
+	"rules": [{ "type": "Text", "globs": ["**/*.svg"] }],
 	"migrations": [
 		{
 			"new_sqlite_classes": ["MyMCP"],
