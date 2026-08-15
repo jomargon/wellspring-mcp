@@ -13,6 +13,14 @@
 const CONTENT_SECURITY_POLICY =
 	"default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' https://account.withings.com; base-uri 'none'; frame-ancestors 'none'";
 
+// Public source. Defined once so the landing page, the privacy policy, and the
+// footer can never drift apart on where the code actually lives. An outbound
+// link needs no CSP allowance: default-src 'none' governs subresource loads,
+// not navigation.
+export const SOURCE_URL = "https://github.com/jomargon/wellspring-mcp";
+export const SOURCE_LABEL = "github.com/jomargon/wellspring-mcp";
+export const CONTACT_EMAIL = "hello@wellspring.fit";
+
 export const STYLES = `
 :root {
 	--primary-color: #0070f3;
@@ -161,6 +169,20 @@ a {
 	margin: 0;
 }
 
+.footer {
+	max-width: 600px;
+	margin: 0 auto 2.5rem;
+	padding: 0 1rem;
+	text-align: center;
+	font-size: 0.9rem;
+	color: #555;
+}
+
+.footer-sep {
+	margin: 0 0.6rem;
+	color: var(--border-color);
+}
+
 @media (max-width: 640px) {
 	.container {
 		margin: 1rem auto;
@@ -202,6 +224,9 @@ export function layout(title: string, bodyHtml: string): string {
 	</head>
 	<body>
 ${bodyHtml}
+		<footer class="footer">
+			<a href="/privacy">Privacy</a><span class="footer-sep">·</span><a href="${SOURCE_URL}" rel="noopener noreferrer">Source</a><span class="footer-sep">·</span><a href="mailto:${CONTACT_EMAIL}">Contact</a>
+		</footer>
 	</body>
 </html>`;
 }

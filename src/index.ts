@@ -91,8 +91,10 @@ function withSecurityHeaders(
 			// throttles legitimate refreshes, and PKCE + client secrets already
 			// gate that endpoint. The same shared-egress concern applies to
 			// /register in principle, but the KV write quota needs the guard
-			// and real registration bursts are tiny (Withings caps integrations
-			// at 10 users until production approval).
+			// and real registration bursts are tiny: each user registers a
+			// client once per MCP client they connect from, and signups are
+			// organic rather than campaign-driven. If that ever stops being
+			// true, revisit this before the quota does it for us.
 			if (
 				pathname === "/register" &&
 				request.method !== "OPTIONS" &&

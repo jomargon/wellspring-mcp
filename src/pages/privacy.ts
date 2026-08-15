@@ -1,10 +1,12 @@
-// Privacy policy (PLAN.md §10) — the hard requirement for Withings approval.
-// Served by the Worker itself so it ships versioned with the code.
+// Privacy policy (PLAN.md §10). Served by the Worker itself so it ships
+// versioned with the code and every claim here is checkable against the commit
+// that serves it.
 //
-// COPY REVIEW: full draft — developer should read, adjust, and confirm every
-// claim against the code before the repo goes public. Keep it short and true.
+// Every sentence below is load-bearing: if a change to the code would make one
+// of these claims untrue, the claim changes in the same commit, or the change
+// does not land. Keep it short and true.
 
-import { layout } from "./layout";
+import { CONTACT_EMAIL, layout, SOURCE_LABEL, SOURCE_URL } from "./layout";
 
 const LAST_UPDATED = "2026-07-23";
 
@@ -44,9 +46,15 @@ export function privacyPage(): string {
 				<a href="https://account.withings.com" rel="noopener noreferrer">Withings
 				account</a> settings (Apps &amp; Partners).</p>
 
+				<h2>How to verify this</h2>
+				<p>The source is public at
+				<a href="${SOURCE_URL}" rel="noopener noreferrer">${SOURCE_LABEL}</a>:
+				token storage, the Withings endpoints called, what reaches the logs,
+				and the tests covering each.</p>
+
 				<h2>Contact</h2>
 				<p>Questions or concerns:
-				<a href="mailto:hello@wellspring.fit">hello@wellspring.fit</a>.</p>
+				<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 
 				<p class="description"><a href="/">Back to the connect page</a></p>
 			</div>
