@@ -1,7 +1,8 @@
 # Wellspring for Withings (`wellspring-mcp`)
 
-Remote MCP server on Cloudflare Workers that lets Claude read a user's Withings
-sleep, body, activity, and heart data. Read-only. Zero-cost infrastructure.
+Remote MCP server on Cloudflare Workers that lets an AI assistant read a user's
+Withings sleep, body, activity, and heart data. Read-only. Zero-cost
+infrastructure.
 
 ## Before any work
 
@@ -10,23 +11,9 @@ phases, security requirements, and acceptance criteria all live there, and its
 preamble contains your standing instructions. If code and PLAN.md disagree, flag
 it; don't silently diverge.
 
-**Current phase: 6** (Withings approval submission — see PLAN.md §11 and
-§10. Phase 5 landed 2026-07-27: production live at `wellspring.fit` behind
-CI (merge to `main` = `wrangler deploy --env production`; `checks` is an
-enforced required status check), prod secrets set, prod connector verified
-E2E in Claude, dev connector deauthorized; repo public with secret scanning
-and push protection on. A three-round multi-agent security/correctness
-review hardened the OAuth surface (PKCE required, /register rate-limited,
-CSRF one-time-use on all paths, UTF-8-safe state/cookie encoding) and the
-token DO (dead-token report marker, rung-3 clobber guard); 97 tests green.
-Phase 6 scope: verify the demo-mode flow end-to-end for a device-less
-reviewer, confirm branding compliance, submit the §10 paragraph with repo +
-privacy links via the Withings developer dashboard. Existing users stay
-under the 10-user cap while approval is pending. User-facing copy stays
-client-neutral (any remote-MCP assistant) and free of em dashes /
-AI-sounding phrasing (developer preference). Rung 2 of the recovery ladder
-is mock-tested only — a live `withings_token_recovery` log event is expected
-~never; investigate if the counter climbs.)
+The project has shipped: production is live and PLAN.md §13 is met, so work is
+maintenance and the optional §11 Phase 7 items. Working status and open operator
+items live in `STATUS.local.md` (untracked) so this file stays durable.
 
 ## Invariants — never violate, even in a "quick fix"
 
@@ -95,10 +82,11 @@ is mock-tested only — a live `withings_token_recovery` log event is expected
 - `npm run cf-typegen` — regenerate `worker-configuration.d.ts` after any
   `wrangler.jsonc` or `.dev.vars` change (runtime + Env types come from it;
   `@cloudflare/workers-types` is deliberately not installed)
-- `npm run deploy` — deploy the dev Worker (production deploys are Phase 5)
+- `npm run deploy` — deploy the dev Worker (production deploys run from CI on
+  merge to `main`, never by hand)
 
 ## Maintaining this file
 
-Keep it short — it loads into every session. Update the phase number as the
-project advances. Append conventions here when they're discovered the hard way;
-move anything spec-like into PLAN.md instead.
+Keep it short. Append conventions here when they're discovered the hard way,
+move anything spec-like into PLAN.md, and keep phase or status detail in
+`STATUS.local.md` rather than here.

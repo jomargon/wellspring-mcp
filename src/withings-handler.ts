@@ -91,8 +91,9 @@ app.get("/authorize", async (c) => {
 		return c.text("This server requires PKCE (S256 code challenge)", 400);
 	}
 
-	// `?demo=1` lets a device-less tester (or Withings reviewer) run the whole
-	// flow against Withings' demo user.
+	// `?demo=1` lets anyone without a Withings device run the whole flow
+	// against Withings' demo user: evaluating the integration before buying
+	// hardware, and CI.
 	const demo = c.req.query("demo") === "1";
 
 	// Check if client is already approved

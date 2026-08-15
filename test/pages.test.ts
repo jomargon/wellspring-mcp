@@ -1,8 +1,10 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import {
+	CONTACT_EMAIL,
 	htmlResponse,
 	layout,
+	SOURCE_URL,
 	STYLES,
 	stylesResponse,
 } from "../src/pages/layout";
@@ -45,6 +47,18 @@ describe("layout module", () => {
 		expect(html).not.toContain("<style");
 		expect(html).not.toContain("<script");
 		expect(html).not.toContain("onclick");
+	});
+
+	// The footer carries the source link onto every page that uses layout(),
+	// so a reader lands on the auditable code from wherever they started.
+	it("layout renders a footer linking privacy, source, and contact", () => {
+		const html = layout("Test Title", "<p>hello</p>");
+		expect(html).toContain('<footer class="footer">');
+		expect(html).toContain(`href="${SOURCE_URL}"`);
+		expect(html).toContain('href="/privacy"');
+		expect(html).toContain(`href="mailto:${CONTACT_EMAIL}"`);
+		// External link must not hand the target a window reference.
+		expect(html).toContain('rel="noopener noreferrer"');
 	});
 
 	it("htmlResponse sets the strict CSP, frame denial, and no-store", () => {
@@ -173,6 +187,9 @@ describe("GET / (landing page)", () => {
 		expect(html).toContain('href="/privacy"');
 		// Starter prompt beats a "now what?" moment (PLAN.md §9.3 as amended).
 		expect(html).toContain("How did I sleep last week?");
+		// Auditable code is the trust signal the privacy claims rest on
+		// (PLAN.md §10), so the source link is a requirement, not decoration.
+		expect(html).toContain(SOURCE_URL);
 		expect(html).not.toContain("<script");
 		expect(html).not.toContain("<style");
 	});
@@ -193,6 +210,9 @@ describe("GET /privacy (privacy policy)", () => {
 		}
 		// Tokens-only storage claim.
 		expect(html.toLowerCase()).toContain("token");
+		// A privacy claim the reader cannot check is worth nothing, so the
+		// policy points at the code that backs it (PLAN.md §10).
+		expect(html).toContain(SOURCE_URL);
 		expect(html).not.toContain("<script");
 	});
 });

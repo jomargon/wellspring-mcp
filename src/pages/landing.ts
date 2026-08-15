@@ -1,10 +1,11 @@
-// Landing / connect page (PLAN.md §9.1). Triple duty: user onboarding,
-// Withings reviewer first impression, and the link you send a friend.
+// Landing / connect page (PLAN.md §9.1). Triple duty: user onboarding, a
+// credible first impression for anyone auditing the integration, and the link
+// you send a friend.
 //
-// COPY REVIEW: the wording below is a full draft — developer should read and
-// adjust voice before the repo goes public (Phase 4 gate).
+// Copy stays client-neutral (any assistant that speaks remote MCP, not Claude
+// specifically) so it does not go stale as clients add connector support.
 
-import { layout } from "./layout";
+import { layout, SOURCE_LABEL, SOURCE_URL } from "./layout";
 
 export function landingPage(origin: string): string {
 	const connectorUrl = `${origin}/mcp`;
@@ -36,6 +37,13 @@ export function landingPage(origin: string): string {
 				<p>Only the OAuth tokens needed to talk to Withings, encrypted at
 				rest. Your health measurements are fetched on demand and never stored
 				or logged. Details in the <a href="/privacy">privacy policy</a>.</p>
+
+				<h2>Open source</h2>
+				<p>The code that serves this page is public at
+				<a href="${SOURCE_URL}" rel="noopener noreferrer">${SOURCE_LABEL}</a>,
+				so every claim above is checkable. You can also run your own
+				instance on a free Cloudflare account. That removes us from your
+				trust equation, not Cloudflare.</p>
 
 				<h2>How to connect</h2>
 				<p>Your connector URL is: <code>${connectorUrl}</code></p>
