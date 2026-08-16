@@ -173,7 +173,7 @@ Tool-design practices: ISO `YYYY-MM-DD` date inputs (convert to epoch internally
 
 ## 8. Deployment & Operations
 
-**Environments:** two Wrangler environments — `dev` (default, `wellspring-mcp-dev.<subdomain>.workers.dev`, its own DO namespace and the "Wellspring (Dev)" Withings app registration so redirect URIs don't collide) and `production` (`wellspring.fit`). Local development runs `wrangler dev` with real Withings calls against the demo user.
+**Environments:** during the build there were two Wrangler environments — a deployed `dev` worker on `workers.dev` with its own DO namespace and a separate "Wellspring (Dev)" Withings app registration (so redirect URIs didn't collide), and `production` (`wellspring.fit`). The dev worker was retired once production was verified; keeping a second deployment carrying live Withings credentials earns nothing after launch. What remains is the `production` environment plus the top-level target, which now serves `wrangler dev` and self-hosted instances (§9.6). Local development runs `wrangler dev` with real Withings calls against the demo user, though the OAuth hop itself needs a deployed origin.
 
 **CI/CD (GitHub Actions):** on PR — typecheck, lint, test; on merge to `main` — `wrangler deploy` via `cloudflare/wrangler-action` using an API token stored as a GitHub secret. After the initial setup, "deploying" means "merging a PR."
 

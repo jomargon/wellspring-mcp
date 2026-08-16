@@ -113,6 +113,12 @@ Withings MCP projects instead.
    npm run deploy
    ```
 
+   In the top-level block of `wrangler.jsonc`, set `name` to your worker name
+   and `PUBLIC_ORIGIN` to `https://<your-worker>.workers.dev`. `PUBLIC_ORIGIN`
+   is what the landing page and re-auth links are built from, so leaving it at
+   the localhost default gives your users broken links. Leave the `production`
+   environment at the bottom alone; it is specific to this project's domain.
+
 4. Add `https://<your-worker>.workers.dev/mcp` as a custom connector in your
    AI assistant (see Quickstart above).
 
