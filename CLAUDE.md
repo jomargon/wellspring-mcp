@@ -82,8 +82,11 @@ items live in `STATUS.local.md` (untracked) so this file stays durable.
 - `npm run cf-typegen` — regenerate `worker-configuration.d.ts` after any
   `wrangler.jsonc` or `.dev.vars` change (runtime + Env types come from it;
   `@cloudflare/workers-types` is deliberately not installed)
-- `npm run deploy` — deploy the dev Worker (production deploys run from CI on
-  merge to `main`, never by hand)
+- `npm run deploy:production` — production, run by CI on merge to `main`.
+  Never by hand.
+- `npm run deploy` — top-level target (`wellspring-mcp-local`). Exists for
+  self-hosters (README §Self-hosting); this project has no deployed dev
+  environment, so don't run it here.
 
 ## Maintaining this file
 

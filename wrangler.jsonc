@@ -4,7 +4,15 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "wellspring-mcp-dev",
+	// The top-level target serves `wrangler dev` locally and self-hosted
+	// instances (`npm run deploy` → <name>.<subdomain>.workers.dev, README
+	// §Self-hosting). Self-hosters: change `name`, `PUBLIC_ORIGIN`, and the KV
+	// namespace ids below to your own.
+	//
+	// The operator's production instance is the `production` env at the bottom
+	// of this file, deployed only by CI on merge to main. There is no deployed
+	// dev environment.
+	"name": "wellspring-mcp-local",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": ["nodejs_compat"],
@@ -65,10 +73,19 @@
 			}
 		}
 	],
-	// Non-secret config: public origin used to build re-auth links in tool
-	// errors (the MCP layer has no request URL to derive it from).
+	// Non-secret config: public origin used to build the connector URL on the
+	// landing page and re-auth links in tool errors (the MCP layer has no
+	// request URL to derive it from).
+	//
+	// Defaults to the local dev server; production overrides it below, and
+	// self-hosters must set it to their own worker URL or the connector and
+	// re-auth links will point at localhost.
+	//
+	// The Withings OAuth hop cannot complete against localhost: Withings
+	// exact-matches the registered redirect URI, so the hop is only testable
+	// against a deployed origin. Everything else runs fine locally.
 	"vars": {
-		"PUBLIC_ORIGIN": "https://wellspring-mcp-dev.jomargon.workers.dev"
+		"PUBLIC_ORIGIN": "http://localhost:8788"
 	},
 	"dev": {
 		"port": 8788
